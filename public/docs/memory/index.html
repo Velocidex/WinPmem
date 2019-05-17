@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="x-ua-compatible" content="ie=edge">
+  <title>Acquiring Memory - WinPmem memory imager</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  
+  <link rel="icon" href="https://winpmem.velocidex.com/favicon.png">
+
+  
+  
+  <link rel="stylesheet" href="/css/style.min.6c90b8aa13a752cc3a8126f4846e806e1bfb859fc1beee40779b9bc098e2a16d.css">
+  
+
+  
+
+</head>
+
+<body class='page page-default-single'>
+  <div id="main-menu-mobile" class="main-menu-mobile">
+  <ul>
+    
+    
+    <li class="menu-item-home">
+      <a href="/">
+        <span>Home</span>
+      </a>
+    </li>
+    
+    <li class="menu-item-docs">
+      <a href="/docs/">
+        <span>Docs</span>
+      </a>
+    </li>
+    
+    <li class="menu-item-github">
+      <a href="https://github.com/Velocidex/c-aff4">
+        <span>Github</span>
+      </a>
+    </li>
+    
+  </ul>
+</div>
+  <div class="wrapper">
+    <div class='header'>
+  <div class="container">
+    <div class="logo">
+      <a href="https://winpmem.velocidex.com/"><img alt="Logo" src="http://www.aff4.org/img/AFF4.png" /></a>
+    </div>
+    <div class="logo-mobile">
+      <a href="https://winpmem.velocidex.com/"><img alt="Logo" src="http://www.aff4.org/img/AFF4.png" /></a>
+    </div>
+    <div id="main-menu" class="main-menu">
+  <ul>
+    
+    
+    <li class="menu-item-home">
+      <a href="/">
+        <span>Home</span>
+      </a>
+    </li>
+    
+    <li class="menu-item-docs">
+      <a href="/docs/">
+        <span>Docs</span>
+      </a>
+    </li>
+    
+    <li class="menu-item-github">
+      <a href="https://github.com/Velocidex/c-aff4">
+        <span>Github</span>
+      </a>
+    </li>
+    
+  </ul>
+</div>
+    <button id="toggle-main-menu-mobile" class="hamburger hamburger--slider" type="button">
+  <span class="hamburger-box">
+    <span class="hamburger-inner"></span>
+  </span>
+</button>
+  </div>
+</div>
+
+
+    
+    
+    
+    
+    
+    
+
+    
+    <div class="container pt-2 pt-md-6 pb-3 pb-md-6">
+      <div class="row">
+        <div class="col-12 col-md-3 mb-3">
+          <div class="sidebar">
+            
+<div class="docs-menu">
+  <h4>Docs</h4>
+  <ul>
+    
+    <li class="">
+      <a href="https://winpmem.velocidex.com/docs/usage/">Overview</a>
+    </li>
+    
+    <li class="active ">
+      <a href="https://winpmem.velocidex.com/docs/memory/">Acquiring Memory</a>
+    </li>
+    
+    <li class="">
+      <a href="https://winpmem.velocidex.com/docs/files/">Acquiring Files</a>
+    </li>
+    
+    <li class="">
+      <a href="https://winpmem.velocidex.com/docs/inspecting/">Inspecting AFF4 volumes</a>
+    </li>
+    
+    <li class="">
+      <a href="https://winpmem.velocidex.com/docs/extracting/">Extracting streams from AFF4 volumes</a>
+    </li>
+    
+  </ul>
+</div>
+
+          </div>
+        </div>
+        <div class="col-12 col-md-9">
+          
+<h1 class="title">Acquiring Memory</h1>
+<div class="content">
+  <p>Acquiring memory using WinPmem is a very simple process:</p>
+<div class="highlight"><pre class="chroma">F:\&gt;winpmem.exe -o test.aff4 -dd
+2019-05-17 02:26:22 I This is The WinPmem memory imager. version 3.3rc1
+2019-05-17 02:26:22 I Extracted 45368 bytes into C:\Users\test\AppData\Local\Temp\pmeB5CC.tmp
+2019-05-17 02:26:22 I Driver Unloaded.
+2019-05-17 02:26:22 I Loaded Driver C:\Users\test\AppData\Local\Temp\pmeB5CC.tmp
+2019-05-17 02:26:22 I Setting acquisition mode 2
+2019-05-17 02:26:22 I CR3: 0x00001AA000
+ 5 memory ranges:
+ Start 0x00001000 - Length 0x0009E000
+ Start 0x00100000 - Length 0x00002000
+ Start 0x00103000 - Length 0xBFDDD000
+ Start 0xBFF00000 - Length 0x00100000
+ Start 0x100000000 - Length 0x52400000
+
+2019-05-17 02:26:22 W Output file test.aff4 will be truncated.
+2019-05-17 02:26:22 I Setting acquisition mode 2
+2019-05-17 02:26:22 I Setting acquisition mode 2
+2019-05-17 02:26:22 I Dumping Range 0 (Starts at 0x001000, length 0x09e000
+2019-05-17 02:26:22 I Dumping Range 1 (Starts at 0x100000, length 0x002000
+2019-05-17 02:26:22 I Dumping Range 2 (Starts at 0x103000, length 0xbfddd000
+2019-05-17 02:26:23 I  Reading 2103000 32 MiB / 4387 (25 MiB/s)
+2019-05-17 02:26:24 I  Reading 4103000 64 MiB / 4387 (26 MiB/s)
+2019-05-17 02:26:25 I  Reading 6103000 96 MiB / 4387 (28 MiB/s)</pre></div>
+<ul>
+<li><p>The <code>-o</code> flag instructs WinPmem to create a new AFF4 volume with the
+name <code>test.aff4</code>.</p></li>
+
+<li><p>The -d flag instructs WinPmem to produce more vebose output (twice
+for progress reporting).</p></li>
+
+<li><p>We see that WinPmem extracts the kernel driver into the temporary
+directory and loads it into the kernel. The driver provides access
+to raw memory via a number of acquisition methods but the default is
+usually the best.</p></li>
+
+<li><p>WinPmem then displays the detected physical memory ranges and
+continues to dump each range.</p></li>
+
+<li><p>By default WinPmem uses 2 threads to compress the image, however
+most machines can use multiple cores. Using the <code>--thread</code> flag you
+may increase this number. Using more threads will result in quicker
+compression, and therefore quicker imaging.</p></li>
+
+<li><p>By default WinPmem will use an AFF4 image and will store the memory
+image using an AFF4 Map object with a compressed backing stream. If
+you want to produce a raw file format or an elf file, you may
+specify the <code>--format elf</code> or <code>--format raw</code> to produce these image
+formats. Note that due to limitations in these image formats it is
+not possible to include additional streams. Neither of these formats
+support compression either (but ELF format supports sparse data
+runs).</p></li>
+</ul>
+
+</div>
+</div>
+
+        </div>
+      </div>
+    </div>
+    
+  </div>
+
+  <div class="sub-footer">
+  <div class="container">
+    <div class="row">
+      <div class="col-12">
+        <div class="sub-footer-inner">
+          <ul>
+            <li class="zerostatic"><a href="https://winpmem.velocidex.com">winpmem.velocidex.com</a></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+  
+
+  
+  
+
+  
+  <script type="text/javascript" src="/js/scripts.min.bf1e1f7ae8e03db5f012356e825843facdff51c0a559cb0d27fe2bbe1db405c2.js"></script>
+  
+
+  
+  
+  
+    
+  
+
+
+</body>
+
+</html>

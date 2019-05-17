@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+  xmlns:xhtml="http://www.w3.org/1999/xhtml">
+  
+  <url>
+    <loc>https://winpmem.velocidex.com/docs/usage/</loc>
+  </url>
+  
+  <url>
+    <loc>https://winpmem.velocidex.com/docs/</loc>
+  </url>
+  
+  <url>
+    <loc>https://winpmem.velocidex.com/docs/memory/</loc>
+  </url>
+  
+  <url>
+    <loc>https://winpmem.velocidex.com/docs/files/</loc>
+  </url>
+  
+  <url>
+    <loc>https://winpmem.velocidex.com/docs/inspecting/</loc>
+  </url>
+  
+  <url>
+    <loc>https://winpmem.velocidex.com/docs/extracting/</loc>
+  </url>
+  
+  <url>
+    <loc>https://winpmem.velocidex.com/categories/</loc>
+    <priority>0</priority>
+  </url>
+  
+  <url>
+    <loc>https://winpmem.velocidex.com/tags/</loc>
+    <priority>0</priority>
+  </url>
+  
+  <url>
+    <loc>https://winpmem.velocidex.com/</loc>
+  </url>
+  
+</urlset>

@@ -1,0 +1,36 @@
+baseURL = "https://winpmem.velocidex.com/"
+languageCode = "en-us"
+title = "WinPmem memory imager"
+theme = "hugo-whisper-theme"
+
+pygmentsCodeFences = true
+pygmentsCodefencesGuessSyntax = true
+pygmentsUseClasses = true
+
+[[menu.main]]
+    name = "Home"
+    url = "/"
+    weight = 1
+
+[[menu.main]]
+    name = "Docs"
+    url = "/docs/"
+    weight = 2
+
+[[menu.main]]
+    name = "Github"
+    url = "https://github.com/Velocidex/c-aff4"
+    weight = 3
+
+[params]
+  [params.homepage_meta_tags]
+    meta_description = "WinPmem memory imager."
+    meta_og_title = "WinPmem memory imager"
+    meta_og_type = "website"
+    meta_og_url = "https://github.com/Velocidex/c-aff4"
+    meta_og_image = "http://www.aff4.org/img/AFF4.png"
+    meta_og_description = "The WinPmem suite of memory acquisition tools support Windows, macOS and Linux."
+
+  [params.logo]
+      mobile = "http://www.aff4.org/img/AFF4.png"
+      standard  = "http://www.aff4.org/img/AFF4.png"

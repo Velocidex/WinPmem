@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="x-ua-compatible" content="ie=edge">
+  <title>Overview - WinPmem memory imager</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  
+  <link rel="icon" href="https://winpmem.velocidex.com/favicon.png">
+
+  
+  
+  <link rel="stylesheet" href="/css/style.min.6c90b8aa13a752cc3a8126f4846e806e1bfb859fc1beee40779b9bc098e2a16d.css">
+  
+
+  
+
+</head>
+
+<body class='page page-default-single'>
+  <div id="main-menu-mobile" class="main-menu-mobile">
+  <ul>
+    
+    
+    <li class="menu-item-home">
+      <a href="/">
+        <span>Home</span>
+      </a>
+    </li>
+    
+    <li class="menu-item-docs">
+      <a href="/docs/">
+        <span>Docs</span>
+      </a>
+    </li>
+    
+    <li class="menu-item-github">
+      <a href="https://github.com/Velocidex/c-aff4">
+        <span>Github</span>
+      </a>
+    </li>
+    
+  </ul>
+</div>
+  <div class="wrapper">
+    <div class='header'>
+  <div class="container">
+    <div class="logo">
+      <a href="https://winpmem.velocidex.com/"><img alt="Logo" src="http://www.aff4.org/img/AFF4.png" /></a>
+    </div>
+    <div class="logo-mobile">
+      <a href="https://winpmem.velocidex.com/"><img alt="Logo" src="http://www.aff4.org/img/AFF4.png" /></a>
+    </div>
+    <div id="main-menu" class="main-menu">
+  <ul>
+    
+    
+    <li class="menu-item-home">
+      <a href="/">
+        <span>Home</span>
+      </a>
+    </li>
+    
+    <li class="menu-item-docs">
+      <a href="/docs/">
+        <span>Docs</span>
+      </a>
+    </li>
+    
+    <li class="menu-item-github">
+      <a href="https://github.com/Velocidex/c-aff4">
+        <span>Github</span>
+      </a>
+    </li>
+    
+  </ul>
+</div>
+    <button id="toggle-main-menu-mobile" class="hamburger hamburger--slider" type="button">
+  <span class="hamburger-box">
+    <span class="hamburger-inner"></span>
+  </span>
+</button>
+  </div>
+</div>
+
+
+    
+    
+    
+    
+    
+    
+
+    
+    <div class="container pt-2 pt-md-6 pb-3 pb-md-6">
+      <div class="row">
+        <div class="col-12 col-md-3 mb-3">
+          <div class="sidebar">
+            
+<div class="docs-menu">
+  <h4>Docs</h4>
+  <ul>
+    
+    <li class="active ">
+      <a href="https://winpmem.velocidex.com/docs/usage/">Overview</a>
+    </li>
+    
+    <li class="">
+      <a href="https://winpmem.velocidex.com/docs/memory/">Acquiring Memory</a>
+    </li>
+    
+    <li class="">
+      <a href="https://winpmem.velocidex.com/docs/files/">Acquiring Files</a>
+    </li>
+    
+    <li class="">
+      <a href="https://winpmem.velocidex.com/docs/inspecting/">Inspecting AFF4 volumes</a>
+    </li>
+    
+    <li class="">
+      <a href="https://winpmem.velocidex.com/docs/extracting/">Extracting streams from AFF4 volumes</a>
+    </li>
+    
+  </ul>
+</div>
+
+          </div>
+        </div>
+        <div class="col-12 col-md-9">
+          
+<h1 class="title">Overview</h1>
+<div class="content">
+  
+
+<p>WinPmem is developed as part of the AFF4 imager project. AFF4 is an
+advanced, open forensic imaging format. The format has been
+standardized in the <a href="https://github.com/aff4/Standard">AFF4 Standard Specification</a>, and it is increasing more supported by other tools.</p>
+
+<p>WinPmem by default will use AFF4 to store the memory image, but it is
+also possible to write the image in RAW format or ELF format. You
+might want to do this if you are going to use the image with tools
+that can not read AFF4 natively. However, note that using these
+imaging format will cause WinPmem to skip acquisition of multiple
+files and metadata making the image harder to use.</p>
+
+<h2 id="why-use-aff4">Why use AFF4?</h2>
+
+<p>The AFF4 format is specifically designed to support a wide range of
+use cases in forensic evidence capture and preservation. Some of the
+benefits of using AFF4 over another proprietary format are</p>
+
+<ul>
+<li><p>The AFF4 format is an opened standard with many open source
+implementations in a variery of languages. The format itself is very
+simple and so it will always be possible to extract data even
+without an proper implementation.</p></li>
+
+<li><p>AFF4 storage is designed around the widely used Zip file
+format. This means that you can use typical Zip recovery utilities
+to repair corrupted images, inspect the content of images etc.</p></li>
+
+<li><p>AFF4 supports multiple streams within the same volume. This allows
+multiple sources of evidence to be captured into the same case
+file. For example, related memory, disk and logical file streams can
+be handled simultaneously. WinPmem uses this property to store
+memory images in the same volume as important files like drivers and
+kernel image, thus assisting the analysis phase.</p></li>
+
+<li><p>AFF4 supports sparse streams (using the Map stream type). This is
+useful for representing memory images (which might have gaps in
+them) as well as simply representing read errors (rather than simply
+zero padding them).</p></li>
+
+<li><p>AFF4 supports arbitrary metadata as RDF statements.</p></li>
+</ul>
+
+<p>The Pmem memory acquisition suite includes the <em>WinPmem</em>, <em>OSXPmem</em>
+and <em>LinPmem</em> tool. Each tool implements memory acquisition for its
+respective OS but all use largely the same options. All the below
+commands should also work on any tools in the pmem suite. For
+simplicity we demonstrate with WinPmem.</p>
+
+<p>You can download_ the latest release of the aff4 imager through the
+<a href="https://github.com/Velocidex/c-aff4/releases">project&rsquo;s release page</a>. Releases are
+statically built for their respective platforms in order to ensure
+that they can be easily deployed with minimal system requirements -
+even on very old systems. You do not need to include any runtime
+dependencies (like Visual C runtimes).</p>
+
+<p>The following section describes how to use the imager effectively. You
+can get some helpful messages from the imager itself when run with the
+<em>&ndash;help</em> flag.</p>
+
+</div>
+</div>
+
+        </div>
+      </div>
+    </div>
+    
+  </div>
+
+  <div class="sub-footer">
+  <div class="container">
+    <div class="row">
+      <div class="col-12">
+        <div class="sub-footer-inner">
+          <ul>
+            <li class="zerostatic"><a href="https://winpmem.velocidex.com">winpmem.velocidex.com</a></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+  
+
+  
+  
+
+  
+  <script type="text/javascript" src="/js/scripts.min.bf1e1f7ae8e03db5f012356e825843facdff51c0a559cb0d27fe2bbe1db405c2.js"></script>
+  
+
+  
+  
+  
+    
+  
+
+
+</body>
+
+</html>

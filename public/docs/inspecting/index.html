@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="x-ua-compatible" content="ie=edge">
+  <title>Inspecting AFF4 volumes - WinPmem memory imager</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  
+  <link rel="icon" href="https://winpmem.velocidex.com/favicon.png">
+
+  
+  
+  <link rel="stylesheet" href="/css/style.min.6c90b8aa13a752cc3a8126f4846e806e1bfb859fc1beee40779b9bc098e2a16d.css">
+  
+
+  
+
+</head>
+
+<body class='page page-default-single'>
+  <div id="main-menu-mobile" class="main-menu-mobile">
+  <ul>
+    
+    
+    <li class="menu-item-home">
+      <a href="/">
+        <span>Home</span>
+      </a>
+    </li>
+    
+    <li class="menu-item-docs">
+      <a href="/docs/">
+        <span>Docs</span>
+      </a>
+    </li>
+    
+    <li class="menu-item-github">
+      <a href="https://github.com/Velocidex/c-aff4">
+        <span>Github</span>
+      </a>
+    </li>
+    
+  </ul>
+</div>
+  <div class="wrapper">
+    <div class='header'>
+  <div class="container">
+    <div class="logo">
+      <a href="https://winpmem.velocidex.com/"><img alt="Logo" src="http://www.aff4.org/img/AFF4.png" /></a>
+    </div>
+    <div class="logo-mobile">
+      <a href="https://winpmem.velocidex.com/"><img alt="Logo" src="http://www.aff4.org/img/AFF4.png" /></a>
+    </div>
+    <div id="main-menu" class="main-menu">
+  <ul>
+    
+    
+    <li class="menu-item-home">
+      <a href="/">
+        <span>Home</span>
+      </a>
+    </li>
+    
+    <li class="menu-item-docs">
+      <a href="/docs/">
+        <span>Docs</span>
+      </a>
+    </li>
+    
+    <li class="menu-item-github">
+      <a href="https://github.com/Velocidex/c-aff4">
+        <span>Github</span>
+      </a>
+    </li>
+    
+  </ul>
+</div>
+    <button id="toggle-main-menu-mobile" class="hamburger hamburger--slider" type="button">
+  <span class="hamburger-box">
+    <span class="hamburger-inner"></span>
+  </span>
+</button>
+  </div>
+</div>
+
+
+    
+    
+    
+    
+    
+    
+
+    
+    <div class="container pt-2 pt-md-6 pb-3 pb-md-6">
+      <div class="row">
+        <div class="col-12 col-md-3 mb-3">
+          <div class="sidebar">
+            
+<div class="docs-menu">
+  <h4>Docs</h4>
+  <ul>
+    
+    <li class="">
+      <a href="https://winpmem.velocidex.com/docs/usage/">Overview</a>
+    </li>
+    
+    <li class="">
+      <a href="https://winpmem.velocidex.com/docs/memory/">Acquiring Memory</a>
+    </li>
+    
+    <li class="">
+      <a href="https://winpmem.velocidex.com/docs/files/">Acquiring Files</a>
+    </li>
+    
+    <li class="active ">
+      <a href="https://winpmem.velocidex.com/docs/inspecting/">Inspecting AFF4 volumes</a>
+    </li>
+    
+    <li class="">
+      <a href="https://winpmem.velocidex.com/docs/extracting/">Extracting streams from AFF4 volumes</a>
+    </li>
+    
+  </ul>
+</div>
+
+          </div>
+        </div>
+        <div class="col-12 col-md-9">
+          
+<h1 class="title">Inspecting AFF4 volumes</h1>
+<div class="content">
+  <p>AFF4 volumes are based around the common Zip compression standard (for
+large volumes we use Zip64 extensions). Therefore it is possible to
+examine AFF4 volumes using common zip utilities.</p>
+<div class="highlight"><pre class="chroma">  ⟫ unzip -l /tmp/test.aff4
+    Archive:  /tmp/test.aff4
+      aff4://c7c60030-cc3e-43a6-b5d1-1551b29c9918
+      Length      Date    Time    Name
+      ---------  ---------- -----   ----
+      189432     2018-01-15 12:50   usr/bin/mksquashfs
+      951952     2018-01-15 12:50   usr/bin/x86_64-w64-mingw32-cpp
+      ...
+      50929      2018-01-15 12:50   information.turtle
+      ...
+      ---------                     -------
+      315748394                     327 files</pre></div>
+<p>We can see that each volume has a unique URN, and it contains a file
+called &ldquo;information.turtle&rdquo;. This file contains the AFF4 metadata for
+the volume as an RDF turtle file.</p>
+
+<p>We can get the aff4 imager to display the metadata in the volume using
+the -V flag::</p>
+<div class="highlight"><pre class="chroma">  ⟫ aff4imager -V /tmp/test.aff4
+    @prefix rdf: &lt;http://www.w3.org/1999/02/22-rdf-syntax-ns#&gt; .
+    @prefix aff4: &lt;http://aff4.org/Schema#&gt; .
+    @prefix xsd: &lt;http://www.w3.org/2001/XMLSchema#&gt; .
+
+    &lt;aff4://2d874721-267b-40fb-ac20-7bc22a8af883/proc/kallsyms&gt;
+      aff4:original_filename &#34;/proc/kallsyms&#34;^^xsd:string .
+
+    &lt;aff4://2d874721-267b-40fb-ac20-7bc22a8af883/proc/kcore&gt;
+      aff4:category &lt;http://aff4.org/Schema#memory/physical&gt; ;
+      aff4:stored &lt;aff4://2d874721-267b-40fb-ac20-7bc22a8af883&gt; ;
+      a aff4:Image, aff4:Map .
+
+  &lt;aff4://2d874721-267b-40fb-ac20-7bc22a8af883/proc/kcore/data&gt;
+      aff4:chunkSize 32768 ;
+      aff4:chunksInSegment 1024 ;
+      aff4:compressionMethod &lt;https://www.ietf.org/rfc/rfc1950.txt&gt; ;
+      aff4:size 8531652608 ;
+      aff4:stored &lt;aff4://2d874721-267b-40fb-ac20-7bc22a8af883&gt; ;
+      a aff4:ImageStream .</pre></div>
+<p>Note that if we have multiple volumes (as in a split volume set) we
+should list all volumes as parameters to -V.</p>
+
+<p>In the above output we see some interesting artifacts of the AFF4 format:</p>
+
+<ol>
+<li><p>All streams within the AFF4 volume have a unique URN. The imager
+creates the URNs based on their original filename, but this is just
+a convenience. The imager also stores the original filename (which
+might contain backslashes on windows).</p></li>
+
+<li><p>Smaller files (e.g. <em>/proc/kallsyms</em>) are stored as AFF4 Segments
+which are just regular zip archive members. This means you can
+extract Smaller files using normal zip tools.</p></li>
+
+<li><p>Larger files are stored as AFF4 ImageStream. This type of storage
+chunks the file data into 32kb chunks, and stores groups of chunks
+in their own zip segment.</p></li>
+
+<li><p>Finally sparse images (such as memory images) are stores as an AFF4
+Map. The map does not actually store any data itself (the data is
+stored by the stream <em>/proc/kcore/data</em>) but it specifies a
+transformation of its underlying stream.</p></li>
+</ol>
+
+<p>Finally using the -l flag enables a listing of all Image streams from the volume.</p>
+
+</div>
+</div>
+
+        </div>
+      </div>
+    </div>
+    
+  </div>
+
+  <div class="sub-footer">
+  <div class="container">
+    <div class="row">
+      <div class="col-12">
+        <div class="sub-footer-inner">
+          <ul>
+            <li class="zerostatic"><a href="https://winpmem.velocidex.com">winpmem.velocidex.com</a></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+  
+
+  
+  
+
+  
+  <script type="text/javascript" src="/js/scripts.min.bf1e1f7ae8e03db5f012356e825843facdff51c0a559cb0d27fe2bbe1db405c2.js"></script>
+  
+
+  
+  
+  
+    
+  
+
+
+</body>
+
+</html>

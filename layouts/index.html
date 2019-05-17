@@ -1,0 +1,60 @@
+{{ define "title" }}WinPmem memory imager{{ end}}
+{{ define "header_css" }}{{ end }}
+{{ define "body_classes" }}page-home{{ end }}
+{{ define "header_classes" }}{{ end }}
+
+{{ define "meta_tags" }}
+<meta name="description" content="{{ .Site.Params.homepage_meta_tags.meta_description }}" />
+<meta property="og:title" content="{{ .Site.Params.homepage_meta_tags.meta_og_title }}" />
+<meta property="og:type" content="{{ .Site.Params.homepage_meta_tags.meta_og_type }}" />
+<meta property="og:url" content="{{ .Site.Params.homepage_meta_tags.meta_og_url }}" />
+<meta property="og:image" content="{{ .Site.Params.homepage_meta_tags.meta_og_image }}" />
+<meta property="og:description" content="{{ .Site.Params.homepage_meta_tags.meta_og_description }}" />
+<meta name="twitter:card" content="{{ .Site.Params.homepage_meta_tags.meta_twitter_card }}" />
+<meta name="twitter:site" content="{{ .Site.Params.homepage_meta_tags.meta_twitter_site }}" />
+<meta name="twitter:creator" content="{{ .Site.Params.homepage_meta_tags.meta_twitter_creator }}" />
+{{ end }}
+
+{{ define "main" }}
+<div class="strip">
+  <div class="container pt-4 pb-16">
+    <div class="row">
+      <div class="col-12">
+        <h1 class="title">{{ .Title | default .Site.Title }}</h1>
+        <div class="content">
+          {{ if .Content }}
+          {{ .Content }}
+          {{ else }}
+          <p>{{ .Site.Params.homepage_intro }}</p>
+          {{ end }}
+        </div>
+        <a class="button button-primary mb-2" href="/docs">
+          Read the Docs.
+        </a>
+        <a class="button button-primary mb-2" href="https://github.com/Velocidex/c-aff4/releases">
+          Download the release
+        </a>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+{{ if .Site.Params.homepage_image }}
+<div class="strip">
+  <div class="container pt-4 pb-4">
+    <div class="row justify-content-center">
+      <div class="col-12 col-md-10">
+        <div class="terminal">
+          <img src="{{ .Site.Params.homepage_image | relURL}}" />
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{{ end }}
+
+{{ end }}
+
+{{ define "footer_js" }}
+{{ end }}

@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="x-ua-compatible" content="ie=edge">
+  <title>Acquiring Files - WinPmem memory imager</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  
+  <link rel="icon" href="https://winpmem.velocidex.com/favicon.png">
+
+  
+  
+  <link rel="stylesheet" href="/css/style.min.6c90b8aa13a752cc3a8126f4846e806e1bfb859fc1beee40779b9bc098e2a16d.css">
+  
+
+  
+
+</head>
+
+<body class='page page-default-single'>
+  <div id="main-menu-mobile" class="main-menu-mobile">
+  <ul>
+    
+    
+    <li class="menu-item-home">
+      <a href="/">
+        <span>Home</span>
+      </a>
+    </li>
+    
+    <li class="menu-item-docs">
+      <a href="/docs/">
+        <span>Docs</span>
+      </a>
+    </li>
+    
+    <li class="menu-item-github">
+      <a href="https://github.com/Velocidex/c-aff4">
+        <span>Github</span>
+      </a>
+    </li>
+    
+  </ul>
+</div>
+  <div class="wrapper">
+    <div class='header'>
+  <div class="container">
+    <div class="logo">
+      <a href="https://winpmem.velocidex.com/"><img alt="Logo" src="http://www.aff4.org/img/AFF4.png" /></a>
+    </div>
+    <div class="logo-mobile">
+      <a href="https://winpmem.velocidex.com/"><img alt="Logo" src="http://www.aff4.org/img/AFF4.png" /></a>
+    </div>
+    <div id="main-menu" class="main-menu">
+  <ul>
+    
+    
+    <li class="menu-item-home">
+      <a href="/">
+        <span>Home</span>
+      </a>
+    </li>
+    
+    <li class="menu-item-docs">
+      <a href="/docs/">
+        <span>Docs</span>
+      </a>
+    </li>
+    
+    <li class="menu-item-github">
+      <a href="https://github.com/Velocidex/c-aff4">
+        <span>Github</span>
+      </a>
+    </li>
+    
+  </ul>
+</div>
+    <button id="toggle-main-menu-mobile" class="hamburger hamburger--slider" type="button">
+  <span class="hamburger-box">
+    <span class="hamburger-inner"></span>
+  </span>
+</button>
+  </div>
+</div>
+
+
+    
+    
+    
+    
+    
+    
+
+    
+    <div class="container pt-2 pt-md-6 pb-3 pb-md-6">
+      <div class="row">
+        <div class="col-12 col-md-3 mb-3">
+          <div class="sidebar">
+            
+<div class="docs-menu">
+  <h4>Docs</h4>
+  <ul>
+    
+    <li class="">
+      <a href="https://winpmem.velocidex.com/docs/usage/">Overview</a>
+    </li>
+    
+    <li class="">
+      <a href="https://winpmem.velocidex.com/docs/memory/">Acquiring Memory</a>
+    </li>
+    
+    <li class="active ">
+      <a href="https://winpmem.velocidex.com/docs/files/">Acquiring Files</a>
+    </li>
+    
+    <li class="">
+      <a href="https://winpmem.velocidex.com/docs/inspecting/">Inspecting AFF4 volumes</a>
+    </li>
+    
+    <li class="">
+      <a href="https://winpmem.velocidex.com/docs/extracting/">Extracting streams from AFF4 volumes</a>
+    </li>
+    
+  </ul>
+</div>
+
+          </div>
+        </div>
+        <div class="col-12 col-md-9">
+          
+<h1 class="title">Acquiring Files</h1>
+<div class="content">
+  
+
+<p>The WinPmem imager can also acquire multiple files into the AFF4
+volume. These can be devices (such as disks using /dev/sda) or logical
+files.</p>
+
+<h2 id="acquiring-a-disk-image">Acquiring a disk image</h2>
+<div class="highlight"><pre class="chroma">     WinPmem.exe -i \\.\c: -o output.aff4 -dd</pre></div>
+<p>Note that by default the aff4 imager will append new streams to the
+   output volume if it already exists. This is useful for appending
+   more relevant evidence after the initial acquisition is
+   completed. If you dont want this behaviour you can specify the -t
+   (&ndash;truncate) flag to truncate the output volume before adding the
+   new stream.</p>
+
+<h2 id="acquiring-multiple-logical-files">Acquiring multiple logical files</h2>
+<div class="highlight"><pre class="chroma">     WinPmem -i C:/Windows/*.exe -o output.aff4</pre></div>
+<p>Using glob expressions as input files will be expanded as required
+   to include all filenames matching the globs. This works also on
+   Windows which does not expand globs on the shell.</p>
+
+<h2 id="acquiring-files-newer-than-30-days-can-be-done-by-using-the-find">Acquiring files newer than 30 days can be done by using the find</h2>
+
+<p>command on Linux or Powershell script on Windows.</p>
+<div class="highlight"><pre class="chroma">     find /usr/bin/ -ctime -30 | WinPmem -i @ -o /tmp/output.aff4</pre></div>
+<p>Or on Windows:</p>
+<div class="highlight"><pre class="chroma">     powershell -Command &#34;Get-ChildItem f:\ | Where{$_.LastWriteTime -gt
+        (Get-Date).AddDays(-7)} | SELECT Name | ft -hidetableheaders&#34; |
+        WinPmem -i @ -o /tmp/output.aff4</pre></div>
+<p>Using a single @ as the input filename, makes the aff4 imager read
+   the list of files to acqiure from stdin. This allows for more
+   sophisticated pre-processing and makes it easier to acquire files
+   with spaces or special characters in their names (without having to
+   worry about shell escapes). In the above example we use the find
+   unix command to identify files newer than 30 days and also add them
+   to the image.</p>
+
+<h2 id="enabling-multiple-threads">Enabling multiple threads</h2>
+<div class="highlight"><pre class="chroma">     WinPmem.exe -o /tmp/output.aff4 --threads 6</pre></div>
+<p>The aff4 imager uses a single thread by default, but if your
+   machine has more cores, then you will see vastly better performance
+   by allowing more threads to run. This is particularly important
+   when using the default compression of the zlib compressor which
+   needs more CPU resources.</p>
+
+<h2 id="enabling-snappy-compression">Enabling snappy compression</h2>
+<div class="highlight"><pre class="chroma">     WinPmem.exe -o output.aff4 --compression snappy</pre></div>
+<p>The Snappy compression engine is much faster than the default zlib
+   but trades off compression size. Enabling snappy compression will
+   result in slightly larger images but should complete faster.</p>
+
+<h2 id="splitting-an-image-into-multiple-volumes">Splitting an image into multiple volumes</h2>
+<div class="highlight"><pre class="chroma">     WinPmem.exe -o output.aff4 --split 650m</pre></div>
+<p>Some images are very large. By enabling splitting images it is
+   possible to restrict the maximum size of each volume. The imager
+   will close off each volume as it is done with it, and so you can
+   start uploading, archiving each volume as soon as it is
+   finished. Note that the same stream may be split across one or more
+   volumes so you will need all volumes to properly extract the
+   stream.</p>
+
+<h2 id="acquiring-into-standard-output">Acquiring into standard output</h2>
+<div class="highlight"><pre class="chroma">     WinPmem.exe -o - | gsutil cp - gs://rekall-test/test.aff4</pre></div>
+<p>If the output filename is specifies as a single dash (&ldquo;-&rdquo;), the
+   imager writes the AFF4 volume to stdout. This allows the image to
+   be piped to a different tool. The example above streams the image
+   directly to a cloud storage bucket without needing to write a
+   temporary local copy.</p>
+
+</div>
+</div>
+
+        </div>
+      </div>
+    </div>
+    
+  </div>
+
+  <div class="sub-footer">
+  <div class="container">
+    <div class="row">
+      <div class="col-12">
+        <div class="sub-footer-inner">
+          <ul>
+            <li class="zerostatic"><a href="https://winpmem.velocidex.com">winpmem.velocidex.com</a></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+  
+
+  
+  
+
+  
+  <script type="text/javascript" src="/js/scripts.min.bf1e1f7ae8e03db5f012356e825843facdff51c0a559cb0d27fe2bbe1db405c2.js"></script>
+  
+
+  
+  
+  
+    
+  
+
+
+</body>
+
+</html>
