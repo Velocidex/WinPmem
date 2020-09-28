@@ -130,9 +130,9 @@
         <div class="col-12 col-md-9">
           
 <h1 class="title">Acquiring Memory</h1>
-<div class="content">
+<div class="content ">
   <p>Acquiring memory using WinPmem is a very simple process:</p>
-<div class="highlight"><pre class="chroma">F:\&gt;winpmem.exe -o test.aff4 -dd
+<div class="highlight"><pre class="chroma"><code class="language-fallback" data-lang="fallback">F:\&gt;winpmem.exe -o test.aff4 -dd
 2019-05-17 02:26:22 I This is The WinPmem memory imager. version 3.3rc1
 2019-05-17 02:26:22 I Extracted 45368 bytes into C:\Users\test\AppData\Local\Temp\pmeB5CC.tmp
 2019-05-17 02:26:22 I Driver Unloaded.
@@ -154,35 +154,42 @@
 2019-05-17 02:26:22 I Dumping Range 2 (Starts at 0x103000, length 0xbfddd000
 2019-05-17 02:26:23 I  Reading 2103000 32 MiB / 4387 (25 MiB/s)
 2019-05-17 02:26:24 I  Reading 4103000 64 MiB / 4387 (26 MiB/s)
-2019-05-17 02:26:25 I  Reading 6103000 96 MiB / 4387 (28 MiB/s)</pre></div>
-<ul>
-<li><p>The <code>-o</code> flag instructs WinPmem to create a new AFF4 volume with the
-name <code>test.aff4</code>.</p></li>
-
-<li><p>The -d flag instructs WinPmem to produce more vebose output (twice
-for progress reporting).</p></li>
-
-<li><p>We see that WinPmem extracts the kernel driver into the temporary
+2019-05-17 02:26:25 I  Reading 6103000 96 MiB / 4387 (28 MiB/s)
+</code></pre></div><ul>
+<li>
+<p>The <code>-o</code> flag instructs WinPmem to create a new AFF4 volume with the
+name <code>test.aff4</code>.</p>
+</li>
+<li>
+<p>The -d flag instructs WinPmem to produce more vebose output (twice
+for progress reporting).</p>
+</li>
+<li>
+<p>We see that WinPmem extracts the kernel driver into the temporary
 directory and loads it into the kernel. The driver provides access
 to raw memory via a number of acquisition methods but the default is
-usually the best.</p></li>
-
-<li><p>WinPmem then displays the detected physical memory ranges and
-continues to dump each range.</p></li>
-
-<li><p>By default WinPmem uses 2 threads to compress the image, however
+usually the best.</p>
+</li>
+<li>
+<p>WinPmem then displays the detected physical memory ranges and
+continues to dump each range.</p>
+</li>
+<li>
+<p>By default WinPmem uses 2 threads to compress the image, however
 most machines can use multiple cores. Using the <code>--thread</code> flag you
 may increase this number. Using more threads will result in quicker
-compression, and therefore quicker imaging.</p></li>
-
-<li><p>By default WinPmem will use an AFF4 image and will store the memory
+compression, and therefore quicker imaging.</p>
+</li>
+<li>
+<p>By default WinPmem will use an AFF4 image and will store the memory
 image using an AFF4 Map object with a compressed backing stream. If
 you want to produce a raw file format or an elf file, you may
 specify the <code>--format elf</code> or <code>--format raw</code> to produce these image
 formats. Note that due to limitations in these image formats it is
 not possible to include additional streams. Neither of these formats
 support compression either (but ELF format supports sparse data
-runs).</p></li>
+runs).</p>
+</li>
 </ul>
 
 </div>
@@ -215,7 +222,7 @@ runs).</p></li>
   
 
   
-  <script type="text/javascript" src="/js/scripts.min.bf1e1f7ae8e03db5f012356e825843facdff51c0a559cb0d27fe2bbe1db405c2.js"></script>
+  <script type="text/javascript" src="/js/scripts.min.1237ff71925bb8625c97a9af8db4c54525258bedfd7c47493daaff723bea755e.js"></script>
   
 
   

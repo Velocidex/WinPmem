@@ -133,10 +133,7 @@
 <span class="overview">Overview</span>
 <h1 class="title">Winpmem Documentation</h1>
 <div class="content">
-  
-
-<h2 id="documentation">Documentation</h2>
-
+  <h2 id="documentation">Documentation</h2>
 <p>This is the winpmem documentation.</p>
 
 </div>
@@ -145,33 +142,43 @@
 <div class="summary mb-2">
   
   <h2 class="title-summary"><a href="https://winpmem.velocidex.com/docs/usage/">Overview</a></h2>
-  <p> WinPmem is developed as part of the AFF4 imager project. AFF4 is an advanced, open forensic imaging format. The format has been …</p>
+  <p>WinPmem is developed as part of the AFF4 imager project. AFF4 is an advanced, open forensic imaging format. The format has been standardized in the AFF4 Standard Specification, and it is increasing more supported by other tools.
+WinPmem by default will use AFF4 to store the memory image, but it is also possible to write the image in RAW format or ELF format. You might want to do this if you are going to use the image with tools that can not read AFF4 natively.</p>
 </div>
+
 
 <div class="summary mb-2">
   
   <h2 class="title-summary"><a href="https://winpmem.velocidex.com/docs/memory/">Acquiring Memory</a></h2>
   <p>Acquiring memory using WinPmem is a very simple process:
-F:\&amp;gt;winpmem.exe -o test.aff4 -dd 2019-05-17 02:26:22 I This is The WinPmem …</p>
+F:\&gt;winpmem.exe -o test.aff4 -dd 2019-05-17 02:26:22 I This is The WinPmem memory imager. version 3.3rc1 2019-05-17 02:26:22 I Extracted 45368 bytes into C:\Users\test\AppData\Local\Temp\pmeB5CC.tmp 2019-05-17 02:26:22 I Driver Unloaded. 2019-05-17 02:26:22 I Loaded Driver C:\Users\test\AppData\Local\Temp\pmeB5CC.tmp 2019-05-17 02:26:22 I Setting acquisition mode 2 2019-05-17 02:26:22 I CR3: 0x00001AA000 5 memory ranges: Start 0x00001000 - Length 0x0009E000 Start 0x00100000 - Length 0x00002000 Start 0x00103000 - Length 0xBFDDD000 Start 0xBFF00000 - Length 0x00100000 Start 0x100000000 - Length 0x52400000 2019-05-17 02:26:22 W Output file test.</p>
 </div>
+
 
 <div class="summary mb-2">
   
   <h2 class="title-summary"><a href="https://winpmem.velocidex.com/docs/files/">Acquiring Files</a></h2>
-  <p> The WinPmem imager can also acquire multiple files into the AFF4 volume. These can be devices (such as disks using /dev/sda) or logical …</p>
+  <p>The WinPmem imager can also acquire multiple files into the AFF4 volume. These can be devices (such as disks using /dev/sda) or logical files.
+Acquiring a disk image WinPmem.exe -i \\.\c: -o output.aff4 -dd Note that by default the aff4 imager will append new streams to the output volume if it already exists. This is useful for appending more relevant evidence after the initial acquisition is completed. If you dont want this behaviour you can specify the -t (&ndash;truncate) flag to truncate the output volume before adding the new stream.</p>
 </div>
+
 
 <div class="summary mb-2">
   
   <h2 class="title-summary"><a href="https://winpmem.velocidex.com/docs/inspecting/">Inspecting AFF4 volumes</a></h2>
-  <p>AFF4 volumes are based around the common Zip compression standard (for large volumes we use Zip64 extensions). Therefore it is possible to …</p>
+  <p>AFF4 volumes are based around the common Zip compression standard (for large volumes we use Zip64 extensions). Therefore it is possible to examine AFF4 volumes using common zip utilities.
+⟫ unzip -l /tmp/test.aff4 Archive: /tmp/test.aff4 aff4://c7c60030-cc3e-43a6-b5d1-1551b29c9918 Length Date Time Name --------- ---------- ----- ---- 189432 2018-01-15 12:50 usr/bin/mksquashfs 951952 2018-01-15 12:50 usr/bin/x86_64-w64-mingw32-cpp ... 50929 2018-01-15 12:50 information.turtle ... --------- ------- 315748394 327 files We can see that each volume has a unique URN, and it contains a file called &ldquo;information.</p>
 </div>
+
 
 <div class="summary mb-2">
   
   <h2 class="title-summary"><a href="https://winpmem.velocidex.com/docs/extracting/">Extracting streams from AFF4 volumes</a></h2>
-  <p> Analysis tools which already support AFF4 will be able to use the AFF4 image directly, but sometimes you may come across a tool which does …</p>
+  <p>Analysis tools which already support AFF4 will be able to use the AFF4 image directly, but sometimes you may come across a tool which does not. In this case you will want to extract the RAW streams out of the AFF4 volume.
+To extract streams from an AFF4 volume we use the -e flag.
+Extract streams by using wild cards WinPmem.exe -e &#39;*/kallsyms&#39; --export_dir /tmp/export/ /tmp/test.aff4 By default export directory is the current directory.</p>
 </div>
+
 
 
 
@@ -202,7 +209,7 @@ F:\&amp;gt;winpmem.exe -o test.aff4 -dd 2019-05-17 02:26:22 I This is The WinPme
   
 
   
-  <script type="text/javascript" src="/js/scripts.min.bf1e1f7ae8e03db5f012356e825843facdff51c0a559cb0d27fe2bbe1db405c2.js"></script>
+  <script type="text/javascript" src="/js/scripts.min.1237ff71925bb8625c97a9af8db4c54525258bedfd7c47493daaff723bea755e.js"></script>
   
 
   

@@ -130,11 +130,11 @@
         <div class="col-12 col-md-9">
           
 <h1 class="title">Inspecting AFF4 volumes</h1>
-<div class="content">
+<div class="content ">
   <p>AFF4 volumes are based around the common Zip compression standard (for
 large volumes we use Zip64 extensions). Therefore it is possible to
 examine AFF4 volumes using common zip utilities.</p>
-<div class="highlight"><pre class="chroma">  ⟫ unzip -l /tmp/test.aff4
+<div class="highlight"><pre class="chroma"><code class="language-fallback" data-lang="fallback">  ⟫ unzip -l /tmp/test.aff4
     Archive:  /tmp/test.aff4
       aff4://c7c60030-cc3e-43a6-b5d1-1551b29c9918
       Length      Date    Time    Name
@@ -145,14 +145,13 @@ examine AFF4 volumes using common zip utilities.</p>
       50929      2018-01-15 12:50   information.turtle
       ...
       ---------                     -------
-      315748394                     327 files</pre></div>
-<p>We can see that each volume has a unique URN, and it contains a file
+      315748394                     327 files
+</code></pre></div><p>We can see that each volume has a unique URN, and it contains a file
 called &ldquo;information.turtle&rdquo;. This file contains the AFF4 metadata for
 the volume as an RDF turtle file.</p>
-
 <p>We can get the aff4 imager to display the metadata in the volume using
 the -V flag::</p>
-<div class="highlight"><pre class="chroma">  ⟫ aff4imager -V /tmp/test.aff4
+<div class="highlight"><pre class="chroma"><code class="language-fallback" data-lang="fallback">  ⟫ aff4imager -V /tmp/test.aff4
     @prefix rdf: &lt;http://www.w3.org/1999/02/22-rdf-syntax-ns#&gt; .
     @prefix aff4: &lt;http://aff4.org/Schema#&gt; .
     @prefix xsd: &lt;http://www.w3.org/2001/XMLSchema#&gt; .
@@ -171,32 +170,34 @@ the -V flag::</p>
       aff4:compressionMethod &lt;https://www.ietf.org/rfc/rfc1950.txt&gt; ;
       aff4:size 8531652608 ;
       aff4:stored &lt;aff4://2d874721-267b-40fb-ac20-7bc22a8af883&gt; ;
-      a aff4:ImageStream .</pre></div>
-<p>Note that if we have multiple volumes (as in a split volume set) we
+      a aff4:ImageStream .
+</code></pre></div><p>Note that if we have multiple volumes (as in a split volume set) we
 should list all volumes as parameters to -V.</p>
-
 <p>In the above output we see some interesting artifacts of the AFF4 format:</p>
-
 <ol>
-<li><p>All streams within the AFF4 volume have a unique URN. The imager
+<li>
+<p>All streams within the AFF4 volume have a unique URN. The imager
 creates the URNs based on their original filename, but this is just
 a convenience. The imager also stores the original filename (which
-might contain backslashes on windows).</p></li>
-
-<li><p>Smaller files (e.g. <em>/proc/kallsyms</em>) are stored as AFF4 Segments
+might contain backslashes on windows).</p>
+</li>
+<li>
+<p>Smaller files (e.g. <em>/proc/kallsyms</em>) are stored as AFF4 Segments
 which are just regular zip archive members. This means you can
-extract Smaller files using normal zip tools.</p></li>
-
-<li><p>Larger files are stored as AFF4 ImageStream. This type of storage
+extract Smaller files using normal zip tools.</p>
+</li>
+<li>
+<p>Larger files are stored as AFF4 ImageStream. This type of storage
 chunks the file data into 32kb chunks, and stores groups of chunks
-in their own zip segment.</p></li>
-
-<li><p>Finally sparse images (such as memory images) are stores as an AFF4
+in their own zip segment.</p>
+</li>
+<li>
+<p>Finally sparse images (such as memory images) are stores as an AFF4
 Map. The map does not actually store any data itself (the data is
 stored by the stream <em>/proc/kcore/data</em>) but it specifies a
-transformation of its underlying stream.</p></li>
+transformation of its underlying stream.</p>
+</li>
 </ol>
-
 <p>Finally using the -l flag enables a listing of all Image streams from the volume.</p>
 
 </div>
@@ -229,7 +230,7 @@ transformation of its underlying stream.</p></li>
   
 
   
-  <script type="text/javascript" src="/js/scripts.min.bf1e1f7ae8e03db5f012356e825843facdff51c0a559cb0d27fe2bbe1db405c2.js"></script>
+  <script type="text/javascript" src="/js/scripts.min.1237ff71925bb8625c97a9af8db4c54525258bedfd7c47493daaff723bea755e.js"></script>
   
 
   
