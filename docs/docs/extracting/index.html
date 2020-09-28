@@ -130,28 +130,23 @@
         <div class="col-12 col-md-9">
           
 <h1 class="title">Extracting streams from AFF4 volumes</h1>
-<div class="content">
-  
-
-<p>Analysis tools which already support AFF4 will be able to use the AFF4
+<div class="content ">
+  <p>Analysis tools which already support AFF4 will be able to use the AFF4
 image directly, but sometimes you may come across a tool which does
 not. In this case you will want to extract the RAW streams out of the
 AFF4 volume.</p>
-
 <p>To extract streams from an AFF4 volume we use the <em>-e</em> flag.</p>
-
 <h2 id="extract-streams-by-using-wild-cards">Extract streams by using wild cards</h2>
-<div class="highlight"><pre class="chroma">     WinPmem.exe -e &#39;*/kallsyms&#39; --export_dir /tmp/export/ /tmp/test.aff4</pre></div>
-<p>By default export directory is the current directory. The imager
-   will create a directory structure under the export directory which
-   contains all the matched files.</p>
-
+<div class="highlight"><pre class="chroma"><code class="language-fallback" data-lang="fallback">  WinPmem.exe -e &#39;*/kallsyms&#39; --export_dir /tmp/export/ /tmp/test.aff4
+</code></pre></div><p>By default export directory is the current directory. The imager
+will create a directory structure under the export directory which
+contains all the matched files.</p>
 <h2 id="extract-streams-from-stdin">Extract streams from stdin</h2>
-<div class="highlight"><pre class="chroma">     WinPmem.exe -l test.aff4 | grep exe | \
-          WinPmem.exe -e @ --export_dir export/ test.aff4</pre></div>
-<p>In the above example, we list the streams in the volume, then grep
-   only the executable files, and extract them into the export
-   directory.</p>
+<div class="highlight"><pre class="chroma"><code class="language-fallback" data-lang="fallback">  WinPmem.exe -l test.aff4 | grep exe | \
+       WinPmem.exe -e @ --export_dir export/ test.aff4
+</code></pre></div><p>In the above example, we list the streams in the volume, then grep
+only the executable files, and extract them into the export
+directory.</p>
 
 </div>
 </div>
@@ -183,7 +178,7 @@ AFF4 volume.</p>
   
 
   
-  <script type="text/javascript" src="/js/scripts.min.bf1e1f7ae8e03db5f012356e825843facdff51c0a559cb0d27fe2bbe1db405c2.js"></script>
+  <script type="text/javascript" src="/js/scripts.min.1237ff71925bb8625c97a9af8db4c54525258bedfd7c47493daaff723bea755e.js"></script>
   
 
   
