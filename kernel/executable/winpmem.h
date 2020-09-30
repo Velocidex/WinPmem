@@ -8,7 +8,7 @@
 #include <varargs.h>
 
 // Executable version.
-#define PMEM_VERSION "1.6.2"
+#define PMEM_VERSION "2.0.0"
 #define PMEM_DEVICE_NAME "pmem"
 #define PMEM_SERVICE_NAME TEXT("pmem")
 
