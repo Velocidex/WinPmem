@@ -3,10 +3,11 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <EnableVerifier>False</EnableVerifier>
     <AllDrivers>False</AllDrivers>
-    <VerifyProjectOutput>True</VerifyProjectOutput>
+    <VerifyProjectOutput>False</VerifyProjectOutput>
     <VerifyDrivers />
     <VerifyFlags>133563</VerifyFlags>
-    <TestCertificate>CN="WDKTestCert mic,131384300355942867" | 7EA426631F0B9F382BA48901017D8EF0D2B1AD4F</TestCertificate>
+    <!-- <TestCertificate>CN="WDKTestCert Huxel,132386037225508533" | 5f590a1e0bdee82deba5615ffdff8818573bd26c</TestCertificate> -->
+    <!--<TestCertificate>CN="WDKTestCert mic,131384300355942867" | 7EA426631F0B9F382BA48901017D8EF0D2B1AD4F</TestCertificate>-->
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
