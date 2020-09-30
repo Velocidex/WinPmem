@@ -1,0 +1,22 @@
+====================
+PW for zip: betatest
+====================
+
+and don't forget to set the testsigning on (and reboot).
+
+Known issues: 
+* iospace method on Hyper-V VM using the latest Win10 build (but not old Win10 builds) will fail. The other methods should work.
+* PTE works only for x86.
+* Microsoft bug/glitch: on Hyper-V, the longer a VM runs with the "Dynamic memory" feature enabled, the more fragmentation occurs on the memory range runs. (Up to a thousands).
+
+Works:
+* everything else.
+
+Report as issue:
+* All glitches and bugs not already listed (but not caring about Python yet).
+
+WARNING: do not use this version in your python projects yet! The interface may change at any moment. 
+
+Reminders:
+* Don't forget "bcdedit /set testsigning on"
+* Disable memory compression and use older Win10 builds or Win7 if you intend to load the dump into Volatility 2.
