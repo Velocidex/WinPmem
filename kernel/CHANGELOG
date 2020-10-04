@@ -1,0 +1,51 @@
+
+4.10.2020
+
+New features!
+
+Info: the CTL codes changed (again).
+
+Changes:
+
+* Unlimited read size support!
+  Ever felt you should be able to read a 100 MB in a single read request?
+  Or even a Gigabyte, at once? (If malloc allows that?)
+  Well, read from memory with unlimited size now!
+  
+* FAST. Winpmem.exe took 15 seconds to read a whole 8 GB RAM.
+
+* Safer than the old buffered version. 
+  The old buffered version allowed to basically kill the system 
+  by specifying a too large read sizes. (E.g., starting with 100 MB +)
+  No more: read from Winpmem like from a normal filesystem driver!
+  
+* winpmem.exe now features a provisoric cute icon.
+
+* Current usermode part rewritten to issue "large" (16 MB) reads (faster).
+  Formerly it was reading in tiny 4096 byte units.
+
+* Removed 'fcat.exe' (netcat), which was causing Antivirus to go wild.
+  (Probably due to its long history of having been used as malware intel tool.)
+  It would be better to rewrite this using a clean-room approach.
+  AVs going wild is very cumbersome, to say the least.
+  
+* Removed the elf coredump option as it was causing issues. 
+  It could be taken in again, if needed, but would probably 
+  require some maintenance.
+
+* Cleaned code, code refactoring, removed antique files.
+
+* Updated documentation still mentioning rekall.
+
+* Updated author info (not changing the copyright).
+
+
+TODO/wishlist:
+
+* Additional FAST I/O read support. (Because we can? :D)
+
+* Nicer icon?
+
+* More tests.
+
+* Documentation updates?

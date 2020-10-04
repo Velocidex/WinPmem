@@ -1,6 +1,6 @@
-* Buffered I/O version.
-* Source works for WinXP - Win10, x86 + x64. (with certain limitations , see issues below)
-* current ready-to-use binaries are testsigned and compiled *only* for Win7-Win10, x86 + x64.
+(4. Oct 2020)
+* The *Source code* works for WinXP - Win10, x86 + x64. (with certain limitations , see issues below)
+* Current ready-to-use binaries are testsigned and compiled *only* for Win7-Win10, x86 + x64.
 * Intermediate version and subject of sudden changes.
 
 Known issues: 

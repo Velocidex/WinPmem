@@ -1,6 +1,7 @@
 /*
   Copyright 2018 Velocidex Innovations <mike@velocidex.com>
   Copyright 2014-2017 Google Inc.
+  Authors: Viviane Zwanger, Michael Cohen <mike@velocidex.com>
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -187,9 +188,9 @@ NTSTATUS wddDispatchDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
   IrpStack = IoGetCurrentIrpStackLocation(Irp);
 
-
-  inBuffer = Irp->AssociatedIrp.SystemBuffer;
-  outBuffer = Irp->AssociatedIrp.SystemBuffer;  // same buffer ...
+  inBuffer = IrpStack->Parameters.DeviceIoControl.Type3InputBuffer;
+  outBuffer = Irp->UserBuffer;
+  // IoBuffer = Irp->AssociatedIrp.SystemBuffer;
   
   
   OutputLen = IrpStack->Parameters.DeviceIoControl.OutputBufferLength;
@@ -216,6 +217,20 @@ NTSTATUS wddDispatchDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
         status = STATUS_INFO_LENGTH_MISMATCH;
         goto exit;
     }
+	
+	try 
+	{
+		ProbeForRead( outBuffer, sizeof(struct PmemMemoryInfo), sizeof( UCHAR ) ); 
+		ProbeForWrite( outBuffer, sizeof(struct PmemMemoryInfo), sizeof( UCHAR ) ); 
+	}
+	except(EXCEPTION_EXECUTE_HANDLER)
+	{
+		status = GetExceptionCode();
+		DbgPrint("Error: 0x%08x, probe in Device io dispatch, outbuffer. A naughty process sent us a bad/nonexisting buffer.\n", status); 
+		
+		status = STATUS_SUCCESS; // to the I/O manager: everything's under control. Nothing to see here.
+		goto exit;
+	}
 	
 	info = (void *) outBuffer;
 
@@ -259,12 +274,27 @@ NTSTATUS wddDispatchDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
   {
     WinDbgPrint("Setting Acquisition mode.\n");
 	
-	if ((!(inBuffer)) || (InputLen < sizeof(u32)))
+	if ((!(inBuffer)) || (InputLen < sizeof(u32))) // are you really sure an enum is a u32?
 	{
 		DbgPrint("InBuffer in device io dispatch was invalid.\n");
 		status = STATUS_INFO_LENGTH_MISMATCH;
 		goto exit;
 	}
+	
+	try 
+	{
+		ProbeForRead( inBuffer, sizeof(u32), sizeof( UCHAR ) ); 
+	}
+	except(EXCEPTION_EXECUTE_HANDLER)
+	{
+		status = GetExceptionCode();
+		DbgPrint("Error: 0x%08x, probe in Device io dispatch, Inbuffer. A naughty process sent us a bad/nonexisting buffer.\n", status); 
+		
+		status = STATUS_SUCCESS; // to the I/O manager: everything's under control. Nothing to see here.
+		goto exit;
+	}
+	
+	// security checks finished
 
       enum PMEM_ACQUISITION_MODE mode = *(u32 *) inBuffer; 
 
@@ -390,8 +420,9 @@ NTSTATUS DriverEntry (IN PDRIVER_OBJECT DriverObject,
 
 	DriverObject->DriverUnload = IoUnload;
 	
-	DeviceObject->Flags &= ~DO_DIRECT_IO; // (Not needed according to Walter Oney.)
-	DeviceObject->Flags |= DO_BUFFERED_IO;
+	// We need to set NEITHER, because otherwise for read/write requests the I/O manager cannot know where we except the usermode buffer.
+	DeviceObject->Flags &= ~DO_DIRECT_IO;
+	DeviceObject->Flags &= ~DO_BUFFERED_IO;
 	
   // SetFlag(DeviceObject->Flags, DO_BUFFERED_IO ); // xxx: we will still do BUFFERED I/O for GET_INFO, SET_MODE, and WRITE_ENABLE, 
 													// as they do not represent large amounts of data.

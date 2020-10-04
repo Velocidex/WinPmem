@@ -9,3 +9,7 @@ has recently been separated into its own repository.
 
 This code was originally developed within Google but was released
 under the Apache License.
+
+### Docs
+
+The docs are currently outdated and under construction.

@@ -2,6 +2,7 @@
   Copyright 2018 Velocidex Innovations <mike@velocidex.com>
   Copyright 2014-2017 Google Inc.
   Copyright 2012 Michael Cohen <scudette@gmail.com>
+  Authors: Viviane Zwanger, Michael Cohen <mike@velocidex.com>
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -52,8 +53,8 @@ static int EnsureExtensionHandle(PDEVICE_EXTENSION extension)
 }
 
 
-LONG PhysicalMemoryPartialRead(IN PDEVICE_EXTENSION extension,
-                                      LARGE_INTEGER offset, PCHAR buf,
+ULONG PhysicalMemoryPartialRead(IN PDEVICE_EXTENSION extension,
+                                      LARGE_INTEGER offset, unsigned char * buf,
                                       ULONG count) 
 {
   ULONG page_offset = offset.QuadPart % PAGE_SIZE;
@@ -84,8 +85,8 @@ LONG PhysicalMemoryPartialRead(IN PDEVICE_EXTENSION extension,
 
 
 // Read a single page using MmMapIoSpace.
-static LONG MapIOPagePartialRead(IN PDEVICE_EXTENSION extension,
-                                 LARGE_INTEGER offset, PCHAR buf,
+static ULONG MapIOPagePartialRead(IN PDEVICE_EXTENSION extension,
+                                 LARGE_INTEGER offset, unsigned char * buf,
                                  ULONG count) 
 {
   UNREFERENCED_PARAMETER(extension);
@@ -114,7 +115,7 @@ static LONG MapIOPagePartialRead(IN PDEVICE_EXTENSION extension,
 		{
 		  WinDbgPrintDebug("Unable to read %d bytes from %p for %p\n", to_read, source, offset.QuadPart - page_offset);
 		  MmUnmapIoSpace(mapped_buffer, PAGE_SIZE);
-		  return -1;
+		  return 0;
 		}
 
 		MmUnmapIoSpace(mapped_buffer, PAGE_SIZE);
@@ -122,21 +123,21 @@ static LONG MapIOPagePartialRead(IN PDEVICE_EXTENSION extension,
 		} 
 	else 
 	{
-		// Failed to map page, return an error.
-		return -1;
+		// Failed to map page, return 0, to match it with the other functions (physical device).
+		return 0;
 	}
 }
 
 
 // Read a single page using direct PTE mapping.
-static LONG PTEMmapPartialRead(IN PDEVICE_EXTENSION extension,
-			       LARGE_INTEGER offset, PCHAR buf,
+static ULONG PTEMmapPartialRead(IN PDEVICE_EXTENSION extension,
+			       LARGE_INTEGER offset, unsigned char * buf,
 			       ULONG count) 
 {
   ULONG page_offset = offset.QuadPart % PAGE_SIZE;
   ULONG to_read = min(PAGE_SIZE - page_offset, count);
   LARGE_INTEGER ViewBase;
-  LONG result = -1;
+  ULONG result = 0;
 
   // Round to page size
   ViewBase.QuadPart = offset.QuadPart - page_offset;
@@ -162,48 +163,96 @@ static LONG PTEMmapPartialRead(IN PDEVICE_EXTENSION extension,
 };
 
 
-// xxx: yeah... maybe we should have some device state 
-// that can be set to "DUMP_IN_PROGRESS". 
+// xxx: Maybe we should have some device state that can be set to "DUMP_IN_PROGRESS". 
 // It should be avoided in first place to do more than one DUMP acquisition at the same time simultaneously.
-NTSTATUS DeviceRead(IN PDEVICE_EXTENSION extension, LARGE_INTEGER offset,
-                           PCHAR buf, ULONG count, OUT ULONG *total_read,
-                           LONG (*handler)(IN PDEVICE_EXTENSION, LARGE_INTEGER,
-                                           PCHAR, ULONG)) {
-  int result = 0;
+NTSTATUS DeviceRead(IN PDEVICE_EXTENSION extension, 
+					LARGE_INTEGER offset,
+                    unsigned char * toxic_buffer, ULONG howMuchToRead, 
+					OUT ULONG *total_read,
+                    ULONG (*handler)(IN PDEVICE_EXTENSION, LARGE_INTEGER, unsigned char *, ULONG))
+{
+  ULONG bytes_read = 0;
+  ULONG current_read_window = 0;
+  unsigned char * mdl_buffer = NULL;
+  PMDL mdl = NULL;
+  NTSTATUS status = STATUS_SUCCESS;
+  
+  ASSERT(current_read_window <= howMuchToRead);
 
   *total_read = 0;
 
   ExAcquireFastMutex(&extension->mu);
-  while(*total_read < count) {
-    result = handler(extension, offset, buf, count - *total_read); // xxx: that is weird
+  
+  while (*total_read < howMuchToRead) 
+  {
+	current_read_window =  min(PAGE_SIZE, howMuchToRead - *total_read);
+	
+	// Scudette does not maintain an offset to the (toxic) buffer.
+	// Instead he was increasing the buffer address itself. 
+	// We will overtake this behavior for the sake of keeping the 'hacky style' of the original code. ;-p
+	
+	// Allocate an mdl. Must be freed afterwards (if the call succeeds).
+	mdl = IoAllocateMdl(toxic_buffer, current_read_window,  FALSE, TRUE, NULL); // <= toxic buffer address increases each time in the loop.
+	if (!mdl)
+	{
+		return STATUS_INSUFFICIENT_RESOURCES;
+	}
+	
+	try 
+	{
+		MmProbeAndLockPages(mdl, UserMode, IoWriteAccess); 
+	}
+	except(EXCEPTION_EXECUTE_HANDLER)
+	{
 
-    /* Error Occured. */
-    if(result < 0)
-      goto error;
+		DbgPrint("Exception while probe-writing and locking NEITHER I/O buffer 0x%08x.\n", status);
+		status = GetExceptionCode();
+		IoFreeMdl(mdl);
+		goto end;
+	}
+	
+	// Okay, probed for write access and locked in physical memory. 
+		
+	mdl_buffer = MmGetSystemAddressForMdlSafe(mdl, NormalPagePriority );
+	
+	if (!mdl_buffer) 
+	{
+		MmUnlockPages(mdl);
+		IoFreeMdl(mdl);
+		status = STATUS_INSUFFICIENT_RESOURCES;
+		goto end;
+	}
+	
+    bytes_read = handler(extension, offset, mdl_buffer, current_read_window);
+	
+    if (bytes_read==0) 
+	{
+		DbgPrint("An error occurred: no bytes read.\n");
+		MmUnlockPages(mdl);
+		IoFreeMdl(mdl);
+		status = STATUS_IO_DEVICE_ERROR;
+		goto end;
+	}
+	
+	MmUnlockPages(mdl);
+	IoFreeMdl(mdl);
 
-    /* No data available. */
-    if(result==0) {
-      break;
-    };
+    offset.QuadPart += bytes_read;
+    toxic_buffer += bytes_read;
+    *total_read += bytes_read;
+	
+  }
 
-    offset.QuadPart += result;
-    buf += result;
-    *total_read += result;
-  };
-
+end:
   ExReleaseFastMutex(&extension->mu);
-  return STATUS_SUCCESS;
-
-error:
-  ExReleaseFastMutex(&extension->mu);
-  return STATUS_IO_DEVICE_ERROR;
-};
+  return status;
+}
 
 
 
 NTSTATUS PmemRead(IN PDEVICE_OBJECT  DeviceObject, IN PIRP  Irp) 
 {
-	PVOID Buf;       //Buffer provided by user space.
+	PVOID toxic_buffer;       // Buffer provided by user space. Don't touch it. 
 	ULONG BufLen;    //Buffer length for user provided buffer.
 	LARGE_INTEGER BufOffset; // The file offset requested from userspace.
 	PIO_STACK_LOCATION pIoStackIrp;
@@ -228,7 +277,8 @@ NTSTATUS PmemRead(IN PDEVICE_OBJECT  DeviceObject, IN PIRP  Irp)
 	pIoStackIrp = IoGetCurrentIrpStackLocation(Irp);
 	BufLen = pIoStackIrp->Parameters.Read.Length;
 	BufOffset = pIoStackIrp->Parameters.Read.ByteOffset;
-	Buf = (PCHAR)(Irp->AssociatedIrp.SystemBuffer);
+	toxic_buffer =  Irp->UserBuffer; 
+	// xxx: what we get from userspace is inside here for the NEITHER I/O type. 
 	
 	// xxx:
 	// maybe it's even a kernel driver or rootkit calling us for help.
@@ -239,7 +289,7 @@ NTSTATUS PmemRead(IN PDEVICE_OBJECT  DeviceObject, IN PIRP  Irp)
 	// The usermode program is not allowed to order more than ONE PAGE_SIZE at a time.
 	// But the arbitrary read/write allows up to 1-PAGESIZE bytes. So...
 	
-	if (!(Buf))
+	if (!(toxic_buffer))
 	{
 		DbgPrint("error: provided buffer in read request was invalid.\n");
 		status = STATUS_INVALID_PARAMETER;
@@ -251,10 +301,31 @@ NTSTATUS PmemRead(IN PDEVICE_OBJECT  DeviceObject, IN PIRP  Irp)
 	if (!(BufLen))
 	{
 		DbgPrint("Complain: the caller  wants to read less than one byte.\n");
-		// xxx: What would be good? "Not implemented"?
-		status = STATUS_NOT_IMPLEMENTED;
+		// xxx: What would be good? "Not implemented"? Nah. Better STATUS_INVALID_PARAMETER.
+		status = STATUS_INVALID_PARAMETER;
 		goto exit;
 	}
+	
+	// xxx: might look into ntstatus.h for nicer NTSTATUS codes.
+	
+	// Check if the usermode program spoke the truth.
+	try 
+    {
+		ProbeForWrite( toxic_buffer, BufLen, 1 ); 
+	}
+	except(EXCEPTION_EXECUTE_HANDLER)
+	{
+
+		status = GetExceptionCode();
+		DbgPrint("Error: 0x%08x, probe in PmemRead. A naughty process sent us a bad/nonexisting buffer.\n", status);
+		// Of course now we don't continue. 
+		
+		status = STATUS_SUCCESS; // to the I/O manager: everything's under control. Nothing to see here.
+		goto exit;
+	}
+	
+	// All things considered, the buffer looked good, of right size, and was accessible for write.
+	// It's accepted for the next stage. Don't touch, it's still considered poisonous.
 
 	//DbgPrint("PmemRead\n");
 	//DbgPrint(" - BufLen: 0x%x\r\n", BufLen);
@@ -262,15 +333,15 @@ NTSTATUS PmemRead(IN PDEVICE_OBJECT  DeviceObject, IN PIRP  Irp)
 
 	if ((extension->mode) == ACQUISITION_MODE_PHYSICAL_MEMORY)
 	{
-		status = DeviceRead(extension, BufOffset, Buf, BufLen, &total_read, PhysicalMemoryPartialRead);
+		status = DeviceRead(extension, BufOffset, toxic_buffer, BufLen, &total_read, PhysicalMemoryPartialRead);
 	}
 	else if ((extension->mode) == ACQUISITION_MODE_MAP_IO_SPACE)
 	{
-		status = DeviceRead(extension, BufOffset, Buf, BufLen, &total_read, MapIOPagePartialRead);
+		status = DeviceRead(extension, BufOffset, toxic_buffer, BufLen, &total_read, MapIOPagePartialRead);
 	}
 	else if ((extension->mode) == ACQUISITION_MODE_PTE_MMAP)
 	{
-		status = DeviceRead(extension, BufOffset, Buf, BufLen, &total_read, PTEMmapPartialRead);
+		status = DeviceRead(extension, BufOffset, toxic_buffer, BufLen, &total_read, PTEMmapPartialRead);
 	}
 	else
 	{
@@ -289,9 +360,13 @@ NTSTATUS PmemRead(IN PDEVICE_OBJECT  DeviceObject, IN PIRP  Irp)
 
 #if PMEM_WRITE_ENABLED == 1
 
+// TODO: securing for large writes.
+// WARNING: not fully secured yet! Writing more than a PAGE can fail!
+// That's why I limited it to PAGE_SIZE. Until I finish with that, you are safe, but restricted. (relatively spoken)
+
 NTSTATUS PmemWrite(IN PDEVICE_OBJECT  DeviceObject, IN PIRP  Irp) 
 {
-	PVOID Buf;       //Buffer provided by user space.
+	PVOID toxic_buffer;       //Buffer provided by user space.
 	ULONG BufLen;    //Buffer length for user provided buffer.
 	LARGE_INTEGER BufOffset; // The file offset requested from userspace.
 	PIO_STACK_LOCATION pIoStackIrp;
@@ -331,18 +406,28 @@ NTSTATUS PmemWrite(IN PDEVICE_OBJECT  DeviceObject, IN PIRP  Irp)
 	// Where to write exactly.
 	BufOffset = pIoStackIrp->Parameters.Write.ByteOffset;
 	
-	// Buf = pIoStackIrp->Parameters.DeviceIoControl.Type3InputBuffer;
-	Buf = (PCHAR)(Irp->AssociatedIrp.SystemBuffer);
+	toxic_buffer = pIoStackIrp->Parameters.DeviceIoControl.Type3InputBuffer;
+	// Buf = (PCHAR)(Irp->AssociatedIrp.SystemBuffer);
 	
 	// xxx: hope the caller knows what he's doing here. That's an arbitrary read to anywhere from usermode.
 	// Maybe we should insert some kind of quick puzzle to ensure the caller is sane.
 	
 	// Security checks now.
 	
-	if (!(Buf))
+	if (!(toxic_buffer))
 	{
 		DbgPrint("error: provided buffer in write request was invalid.\n");
 		status = STATUS_INVALID_PARAMETER;
+		goto exit;
+	}
+	
+	if (BufLen > PAGE_SIZE)
+	{
+		DbgPrint("Complain: the caller wants to write more than a PAGE_SIZE!\n");
+		// xxx: We cannot clamp it to PAGE_SIZE, that might lead to corrupt data for the usermode program.
+		// Better directly reject this request then. 
+		// What would be good? "Not implemented"?
+		status = STATUS_NOT_IMPLEMENTED;
 		goto exit;
 	}
 	
@@ -353,6 +438,26 @@ NTSTATUS PmemWrite(IN PDEVICE_OBJECT  DeviceObject, IN PIRP  Irp)
 		DbgPrint("Complain: the caller  wants to write less than one byte.\n");
 		// xxx: What would be good? "Not implemented"?
 		status = STATUS_NOT_IMPLEMENTED;
+		goto exit;
+	}
+	
+	// xxx: might look into ntstatus.h for a nicer NTSTATUS code.
+	
+	// Now check if the usermode program spoke the truth.
+	try 
+    {
+		// xxx: jep. that's a read from our point of view, though we are implementing a WriteFile.
+		ProbeForRead( toxic_buffer, BufLen, 1 ); // xxx: If we would drop the arbitrary read/write primitive from usermode, 
+		// we could put something else then 1 here.
+	}
+	except(EXCEPTION_EXECUTE_HANDLER)
+	{
+
+		status = GetExceptionCode();
+		DbgPrint("Error: 0x%08x, probe in PmemWrite. A naughty process sent us a bad/nonexisting buffer.\n", status);
+		// Of course now we don't continue. 
+		
+		status = STATUS_SUCCESS; // to the I/O manager: everything's under control. Nothing to see.
 		goto exit;
 	}
 	
@@ -376,7 +481,7 @@ NTSTATUS PmemWrite(IN PDEVICE_OBJECT  DeviceObject, IN PIRP  Irp)
 
 		if (NT_SUCCESS(status)) 
 		{
-		  RtlCopyMemory(mapped_buffer + page_offset, Buf, BufLen);
+		  RtlCopyMemory(mapped_buffer + page_offset, toxic_buffer, BufLen);
 		  ZwUnmapViewOfSection((HANDLE)-1, mapped_buffer);
 		}
 		else 

@@ -1,3 +1,7 @@
+# This is for WDK7600 compilation
+# For those who want WinXP support, too.
+# Compile for target "WinXP" and it works for WinxP - Win10.
+
 TARGETNAME=winpmem
 TARGETTYPE=DRIVER
 TARGETPATH=release

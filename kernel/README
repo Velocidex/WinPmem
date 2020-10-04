@@ -1,21 +1,26 @@
 WinPMEM - a kernel mode driver for gaining access to physical memory.
-Version 1.3
+Version 2.0
 Copyright 2012 Michael Cohen <scudette@gmail.com>
+Authors: Viviane Zwanger, Michael Cohen <mike@velocidex.com>
 
 This is a physical memory imager which implements the following features:
 
-- This code builds on 64 bit windows as well as 32 bit windows.
+- Open source
+
+- Support for WinXP - Win 10, x86 + x64. The WDK7600 can be used to 
+  include WinXP support.
+  As default, the provided Winpmem executables will be compiled with WDK10, 
+  supporting Win7 - Win10, and featuring more modern code.
+
+- Three different independent methods to create a memory dump.
+  One method should always work even when faced with kernel mode rootkits.
+
+- Raw memory dump image support.
 
 - A read device interface is used instead of writing the image from the kernel
   like some other imagers. This allows us to have complex userspace imager
   (e.g. copy across network, hash etc), as well as run analysis on the live
-  system (e.g. rekall can be run directly on the device).
-
-- The userspace component can write crash dumps of 32 and 64 bit systems.
-
-- The image can be written to stdout (using an output filename of "-"). This can
-  then be piped using the usual ways (netcat, ssh etc).
-
+  system (e.g. can be run directly on the device).
 
 The files in this directory (Including the winpmem sources and signed binaries),
 are available under the following license: Apache License, Version 2.0
@@ -28,10 +33,14 @@ python acquitision program demonstrates how to use the driver from python and
 can be easily extended to handle the image in another way (e.g. compress, hash,
 send across the network etc).
 
-The winpmem_1.3.exe program is a self contained binary with both 32 and 64 bit
+The winpmem.exe program is a self contained binary with both 32 and 64 bit
 drivers embedded. It is the easiest and most recommended to use for incident
-response since it requires no external dependencies, and automatically installs
-the correct driver.
+response since it requires no external dependencies, and automatically installs 
+(and uninstalls) the correct driver.
+
+There are two winpmem executables: winpmem.exe and winpmem64.exe.  
+Winpmem64.exe can be used in a special environment with no WOW64 emulation support 
+(such as WINPE) and/or the need for the native bitness. 
 
 The Python acquitision tool winpmem.py
 --------------------------------------
@@ -105,13 +114,13 @@ This program is easiest to use for incident response since it requires no other
 dependencies than the executable itself. The program will load the correct
 driver (32 bit or 64 bit) automatically.
 
-c:\..> winpmem_1.3.exe -h
+c:\..> winpmem.exe -h
 Winpmem - A memory imager for windows.
 Copyright Michael Cohen (scudette@gmail.com) 2012.
 
-Version 1.3. Built Nov 12 2012
+Version 2.0. Built Oct 12 2020
 Usage:
-  winpmem_1.3.exe [option] [output path]
+  winpmem.exe [option] [output path]
 
 Option:
   -l    Load the driver and exit.
@@ -120,18 +129,14 @@ Option:
   -w    Turn on/off write mode.
   -1    Use MmMapIoSpace method.
   -2    Use \\Device\PhysicalMemory method (Default).
-  -d    Produce a crashdump file.
+  -3    USE PTE method.
 
 
 NOTE: an output filename of - will write the image to STDOUT.
 
 Examples:
-winpmem_1.3.exe physmem.raw
+winpmem.exe physmem.raw
 Writes a raw image to physmem.raw
-
-winpmem_1.3.exe -d - | nc 192.168.1.1 80
-Writes a crashdump file to netcat for network transport. Output is supressed
-here because STDOUT is redirected.
 
 To load the driver and exit:
 c:\..> winpmem.exe -l
@@ -142,47 +147,16 @@ c:\..> winpmem.exe -u
 Driver Unloaded.
 
 To acquire a raw image using the MmMapIoSpace method:
-c:\..> winpmem_1.3.exe -1 myimage.raw
+c:\..> winpmem.exe -1 myimage.raw
 
 The driver will be automatically unloaded after the image is acquired.
-
-To acquire an image in crashdump format:
-
-c:\..>winpmem_1.3.exe -d c:\temp\test.dmp
-Driver Unloaded.
-Loaded Driver C:\Users\mic\AppData\Local\Temp\win6C6.tmp.
-Will write a crash dump file
-CR3: 0x0000187000
- 2 memory ranges:
-Start 0x00001000 - Length 0x0009E000
-Start 0x00100000 - Length 0x6F6FB000
-
-
-00% 0x00001000 .
-
-00% 0x00100000 ..................................................
-02% 0x03300000 ..................................................
-05% 0x06500000 ..................................................
-...
-92% 0x67300000 ..................................................
-95% 0x6A500000 ..................................................
-98% 0x6D700000 .................................
-Driver Unloaded.
 
 Experimental write support
 --------------------------
 
-As from Version 1.1, the winpmem drivers support writing to memory as well as
+since version 1.1, the winpmem drivers support writing to memory as well as
 reading. This capability is a great learning tool since many rootkit hiding
-techniques can be emulated by writing to memory directly. For example the
-following Rekall session illustrates changing the name of the binary:
-
-WinXPSP2x86:pmem 03:10:40> task = session.profile._EPROCESS(0x82079c18)
-WinXPSP2x86:pmem 03:10:57> task.ImageFileName
-                    Out<3>  [String:ImageFileName]: 'cmd.exe\x00'
-WinXPSP2x86:pmem 03:11:15> task.ImageFileName = "foo.exe\x00"
-WinXPSP2x86:pmem 03:11:21> task.ImageFileName
-                    Out<6>  [String:ImageFileName]: 'foo.exe\x00'
+techniques can be emulated by writing to memory directly. 
 
 NOTE: Since this is a rather dangerous capability, the signed binary drivers
 have write support disabled. The unsigned binaries (really self signed with a
@@ -196,15 +170,8 @@ Bcdedit.exe -set TESTSIGNING ON
 and reboot. You will see a small "Test Mode" text on the desktop to remind you
 that this machine is configured for test signed drivers.
 
-Alternatively you can test this on XP or Vista32 which have no driver signing
-restrictions.
-
 Additionally, Write support must also be enabled at load time:
 
-winpmem_1.3-write.exe -w -l
+winpmem.exe -w -l
 
-This will load the drivers and turn on write support. Then we can run rekall
-interactively, as usual on the raw device:
-
-vol.exe --profile Win7SP1x64 --file \\.\pmem
-
+This will load the drivers and turn on write support.

@@ -19,8 +19,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef _REKALL_DRIVER_PTE_MMAP_H_
-#define _REKALL_DRIVER_PTE_MMAP_H_
+#ifndef _PTE_MMAP_H_
+#define _PTE_MMAP_H_
 
 #define PAGE_MASK (~(PAGE_SIZE-1))
 
@@ -183,4 +183,4 @@ void pte_mmap_init(PTE_MMAP_OBJ *self);
 // Will reset the page table entry for the rogue page.
 void pte_mmap_cleanup(PTE_MMAP_OBJ *self);
 
-#endif  // _REKALL_DRIVER_PTE_MMAP_H_
+#endif  // _PTE_MMAP_H_
