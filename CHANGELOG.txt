@@ -1,11 +1,14 @@
 
-4.10.2020
+6.10.2020
 
-New features!
+New features & major revision (see below).
 
-Info: the CTL codes changed (again).
+Info: the CTL code numbers changed (again). 
+The CTL codes are now found in "userspace_interface/CTL_codes.h", along with other shared user data.
 
 Changes:
+
+* Fixed errors occurring with x86.
 
 * Unlimited read size support!
   Ever felt you should be able to read a 100 MB in a single read request?
@@ -24,6 +27,12 @@ Changes:
 * Current usermode part rewritten to issue "large" (16 MB) reads (faster).
   Formerly it was reading in tiny 4096 byte units.
 
+* CTL codes and struct data shared between driver and usermode is kept in 'userspace_interface'.
+  1. To know which data is shared across kernelspace and userspace, and there is only one place now. 
+  2. It cannot happen that one side changes shared data and the other does not get updated. 
+  
+* Cleaned code, code refactoring, removed antique files. 
+
 * Removed 'fcat.exe' (netcat), which was causing Antivirus to go wild.
   (Probably due to its long history of having been used as malware intel tool.)
   It would be better to rewrite this using a clean-room approach.
@@ -32,8 +41,6 @@ Changes:
 * Removed the elf coredump option as it was causing issues. 
   It could be taken in again, if needed, but would probably 
   require some maintenance.
-
-* Cleaned code, code refactoring, removed antique files.
 
 * Updated documentation still mentioning rekall.
 

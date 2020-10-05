@@ -1,4 +1,5 @@
 #include "pci.h"
+#include "winpmem.h"
 
 u32 read_pci_config(u8 bus, u8 slot, u8 func, u8 offset) {
   u32 v;
@@ -108,7 +109,7 @@ void DumpConfigSpace(u8 bus, u8 slot, u8 func) {
   }
 };
 
-void DumpRuns(struct PmemMemoryInfo *info) {
+void DumpRuns(PWINPMEM_MEMORY_INFO info) {
   int i;
   for(i=0; i<info->NumberOfRuns.QuadPart; i++) {
     WinDbgPrint("0x%llx 0x%llx 0x%llx\n", info->Run[i].BaseAddress.QuadPart,
@@ -119,7 +120,7 @@ void DumpRuns(struct PmemMemoryInfo *info) {
 
 #endif
 
-static NTSTATUS InsertMemoryHole(struct PmemMemoryInfo *info, int len, u64 start, u64 end) 
+static NTSTATUS InsertMemoryHole(PWINPMEM_MEMORY_INFO info, int len, u64 start, u64 end) 
 {
   int i=0;
   UNREFERENCED_PARAMETER(len);
@@ -172,7 +173,7 @@ static NTSTATUS InsertMemoryHole(struct PmemMemoryInfo *info, int len, u64 start
 };
 
 
-static NTSTATUS DumpBaseAddressRegister32(u8 bus, u8 slot, u8 func, u8 offset, struct PmemMemoryInfo * info, int len) 
+static NTSTATUS DumpBaseAddressRegister32(u8 bus, u8 slot, u8 func, u8 offset, PWINPMEM_MEMORY_INFO info, int len) 
 {
   u32 mask = 0;
   u32 base = read_pci_config(bus, slot, func, offset);
@@ -194,7 +195,7 @@ static NTSTATUS DumpBaseAddressRegister32(u8 bus, u8 slot, u8 func, u8 offset, s
 
 
 static NTSTATUS DumpBaseAddressRegister64(u8 bus, u8 slot, u8 func, u8 offset,
-					  struct PmemMemoryInfo *info, int len) {
+					  PWINPMEM_MEMORY_INFO info, int len) {
   u64 base = read_pci_config(bus, slot, func, offset);
   u32 base_high = read_pci_config(bus, slot, func, offset + sizeof(u32));
   u32 mask = 0;
@@ -227,7 +228,7 @@ static NTSTATUS DumpBaseAddressRegister64(u8 bus, u8 slot, u8 func, u8 offset,
 
 // Advances the offset depending on the size of the base address register.
 static NTSTATUS DumpBaseAddressRegister(u8 bus, u8 slot, u8 func, u8 *offset,
-					struct PmemMemoryInfo *info, int len) {
+					PWINPMEM_MEMORY_INFO info, int len) {
   u64 base = read_pci_config(bus, slot, func, *offset) & 0xFFFFFFFF;
 
   if (base == 0) {
@@ -264,7 +265,7 @@ static NTSTATUS DumpBaseAddressRegister(u8 bus, u8 slot, u8 func, u8 *offset,
 
 
 static NTSTATUS DumpStandardHeader(u8 bus, u8 slot, u8 func,
-				   struct PmemMemoryInfo *info, int len) {
+				   PWINPMEM_MEMORY_INFO info, int len) {
   u8 offset;
 
   // For standard devices we just go over all their base address registers.
@@ -277,7 +278,7 @@ static NTSTATUS DumpStandardHeader(u8 bus, u8 slot, u8 func,
 
 
 static NTSTATUS DumpPCIBridge(u8 bus, u8 slot, u8 func,
-			      struct PmemMemoryInfo *info, int len) {
+			      PWINPMEM_MEMORY_INFO info, int len) {
   u8 offset;
   u64 base;
   u64 limit;
@@ -334,14 +335,16 @@ static NTSTATUS DumpPCIBridge(u8 bus, u8 slot, u8 func,
 /*
   Uses direct PCI probing to add accessible physical memory ranges.
 */
-NTSTATUS PCI_AddMemoryRanges(struct PmemMemoryInfo *info, int len) {
-  int required_length = (sizeof(struct PmemMemoryInfo) +
-			 sizeof(PHYSICAL_MEMORY_RANGE));
+NTSTATUS PCI_AddMemoryRanges(PWINPMEM_MEMORY_INFO info, int len) 
+{
   unsigned int bus, slot, func;
+  
+  if (!info) return STATUS_INVALID_PARAMETER;
 
-  if (len < required_length) {
+  if (len < sizeof(WINPMEM_MEMORY_INFO)) 
+  {
     return STATUS_INFO_LENGTH_MISMATCH;
-  };
+  }
 
   // Initialize the physical memory range.
   info->NumberOfRuns.QuadPart = 1;

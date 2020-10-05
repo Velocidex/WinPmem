@@ -19,16 +19,13 @@
 #ifndef _WINPMEM_H_
 #define _WINPMEM_H_
 
-/* These should be changed for incident response purposes to prevent trivial
- * rootkit subversion.
- */
+// Supposed to control whether there should be DbgPrint or not. (?)
 #define SILENT_OPERATION 0
 
 // Really verbose debugging.
 #define VERBOSE_DEBUG 0
 
 #define PMEM_DEVICE_NAME L"pmem"
-#define PMEM_VERSION "v1.7.0"
 #define PMEM_POOL_TAG 0x4d454d50
 
 // In order to enable writing this must be set to 1 and the
@@ -42,107 +39,21 @@
 #include <stdarg.h>
 #include <stdio.h>
 
+#include "userspace_interface\ctl_codes.h"
+#include "userspace_interface\winpmem_shared.h"
+
 #include "pte_mmap.h"
-
-//enum _POOL_TYPE NonPagedPoolNx = (enum _POOL_TYPE)20;
-//enum _POOL_TYPE NonPagedPoolNx = (enum _POOL_TYPE)22;
-
-// Some standard integer sizes.
-typedef unsigned __int64 u64;
-typedef unsigned __int32 u32;
-typedef unsigned __int16 u16;
-typedef unsigned __int8 u8;
 
 #define MI_CONVERT_PHYSICAL_TO_PFN(Pa) (Pa >> 12)
 
-//
-// IOCTL
-//
-// This is used to query the driver about memory stats.
-// #define IOCTL_GET_INFO CTL_CODE(FILE_DEVICE_UNKNOWN, 0x103, METHOD_BUFFERED, FILE_READ_DATA | FILE_WRITE_DATA)
-#define IOCTL_GET_INFO CTL_CODE(FILE_DEVICE_UNKNOWN, 0x103, METHOD_NEITHER, FILE_READ_DATA | FILE_WRITE_DATA)
+extern PUSHORT NtBuildNumber;  // (pre-existing build number.)
 
-// #define IOCTL_SET_MODE CTL_CODE(FILE_DEVICE_UNKNOWN, 0x101, METHOD_BUFFERED, FILE_READ_DATA | FILE_WRITE_DATA)
-#define IOCTL_SET_MODE CTL_CODE(FILE_DEVICE_UNKNOWN, 0x101, METHOD_NEITHER, FILE_READ_DATA | FILE_WRITE_DATA)
-
-// #define IOCTL_WRITE_ENABLE CTL_CODE(FILE_DEVICE_UNKNOWN, 0x102, METHOD_BUFFERED, FILE_READ_DATA | FILE_WRITE_DATA)
-#define IOCTL_WRITE_ENABLE CTL_CODE(FILE_DEVICE_UNKNOWN, 0x102, METHOD_NEITHER, FILE_READ_DATA | FILE_WRITE_DATA)
-
-// This is the old deprecated interface. Use IOCTL_GET_INFO instead.
-// #define IOCTL_GET_INFO_DEPRECATED CTL_CODE(FILE_DEVICE_UNKNOWN, 0x100, METHOD_BUFFERED, FILE_READ_DATA | FILE_WRITE_DATA)
-#define IOCTL_GET_INFO_DEPRECATED CTL_CODE(FILE_DEVICE_UNKNOWN, 0x100, METHOD_NEITHER, FILE_READ_DATA | FILE_WRITE_DATA)
-
-// This is the structure which is returned.
-#pragma pack(push, 2)
-
-extern PUSHORT NtBuildNumber;
-
-
-//typedef LARGE_INTEGER PHYSICAL_ADDRESS, * PPHYSICAL_ADDRESS;
-//typedef struct _PHYSICAL_MEMORY_RANGE {
-//    PHYSICAL_ADDRESS BaseAddress;
-//    LARGE_INTEGER NumberOfBytes;
-//} PHYSICAL_MEMORY_RANGE, * PPHYSICAL_MEMORY_RANGE;
-
-struct PmemMemoryInfo {
-  LARGE_INTEGER CR3;
-  LARGE_INTEGER NtBuildNumber; // Version of this kernel.
-
-  LARGE_INTEGER KernBase;  // The base of the kernel image.
-
-
-  // The following are deprecated and will not be set by the driver. It is safer
-  // to get these during analysis from NtBuildNumberAddr below.
-  LARGE_INTEGER KDBG;  // xxx: I want that. Can I have it?
-
-  // xxx: Support up to 32/64  processors for KPCR. Depending on OS bitness
-  #if defined(_WIN64)
-  LARGE_INTEGER KPCR[64];
-  #else
-  LARGE_INTEGER KPCR[32];
-  #endif
-  // xxx: For what exactly do we need all those KPCRs, anyway? Sure, they look nice.
-
-  LARGE_INTEGER PfnDataBase;
-  LARGE_INTEGER PsLoadedModuleList;
-  LARGE_INTEGER PsActiveProcessHead;
-
-  // END DEPRECATED.
-
-  // The address of the NtBuildNumber integer - this is used to find the kernel
-  // base quickly.
-  LARGE_INTEGER NtBuildNumberAddr;
-
-  // As the driver is extended we can add fields here maintaining
-  // driver alignment..
-  LARGE_INTEGER Padding[0xfe]; // xxx: but you are a on-demand driver. You have no persistence.
-
-  LARGE_INTEGER NumberOfRuns;
-
-  // A Null terminated array of ranges.
-  PHYSICAL_MEMORY_RANGE Run[1];
-};
-
-
-enum PMEM_ACQUISITION_MODE {
-  // Use the MmMapIoSpace API.
-  ACQUISITION_MODE_MAP_IO_SPACE = 0,
-
-  // Map the \\.\PhysicalMemory device.
-  ACQUISITION_MODE_PHYSICAL_MEMORY = 1,
-
-  // Use direct page table manipulation.
-  ACQUISITION_MODE_PTE_MMAP = 2,
-
-  // Use direct page table manipulation with PCI memory map probing
-  ACQUISITION_MODE_PTE_MMAP_WITH_PCI_PROBE = 3
-};
-
+/*
 struct PmemMemoryControl {
   u32 mode;    //really: enum PMEM_ACQUISITION_MODE mode but we want to enforce
                //standard struct sizes.;
 };
-
+*/
 
 /* When we are silent we do not emit any debug messages. */
 #if SILENT_OPERATION == 1
@@ -166,7 +77,8 @@ struct PmemMemoryControl {
 /*
   Our Device Extension Structure.
 */
-typedef struct _DEVICE_EXTENSION {
+typedef struct _DEVICE_EXTENSION
+{
   /* If we read from \\Device\\PhysicalMemory, this is the handle to that. */
   HANDLE MemoryHandle;
 
@@ -187,7 +99,5 @@ DEFINE_GUID(GUID_DEVCLASS_PMEM_DUMPER,
             0x47cb,
             0x410e,
             0xa6, 0x64, 0x5c, 0x70, 0x5a, 0xe4, 0xd7, 0x1b);
-
-#pragma pack(pop)
 
 #endif

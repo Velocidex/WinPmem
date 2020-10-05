@@ -58,11 +58,13 @@ This program is easiest to use for incident response since it requires no other
 dependencies than the executable itself. The program will load the correct
 driver (32 bit or 64 bit) automatically and is self-contained.
 
-NOTE: Currently it is testsigned and needs "bcdedit /set testsigning on" (and reboot).
+NOTE: Currently it is testsigned and needs "bcdedit /set testsigning on" (and reboot). 
+This a permanent setting. Use "bcdedit /set testsigning off" (and reboot) to switch it off again.
 
 NOTE: Do not forget to invoke winpmem as admin/elevated!
 
-Examples:
+##### Examples:
+
 winpmem.exe physmem.raw
 
 Writes a raw image to physmem.raw using the default method of acquisition.
@@ -73,7 +75,7 @@ Invokes the usage print / short manual.
 
 To acquire a raw image using specifically the MmMapIoSpace method:
 
-c:\..> winpmem.exe -1 myimage.raw
+winpmem.exe -1 myimage.raw
 
 The driver will be automatically unloaded after the image is acquired!
 

@@ -6,24 +6,28 @@
 #include <stdarg.h>
 #include <varargs.h>
 
-// Executable version.
-#define PMEM_VERSION "1.6.2"
-#define PMEM_DEVICE_NAME "pmem"
-#define PMEM_SERVICE_NAME TEXT("pmem")
+typedef LARGE_INTEGER PHYSICAL_ADDRESS, *PPHYSICAL_ADDRESS;
 
-static TCHAR version[] = TEXT(PMEM_VERSION) TEXT(" ") TEXT(__DATE__);
+typedef struct _PHYSICAL_MEMORY_RANGE {
+    PHYSICAL_ADDRESS BaseAddress;
+    LARGE_INTEGER NumberOfBytes;
+} PHYSICAL_MEMORY_RANGE, *PPHYSICAL_MEMORY_RANGE;
+
+#include "..\userspace_interface\ctl_codes.h"
+#include "..\userspace_interface\winpmem_shared.h"
+
+static TCHAR version[] = TEXT(PMEM_DRIVER_VERSION) TEXT(" ") TEXT(__DATE__);
 
 // These numbers are set in the resource editor for the FILE resource.
 #define WINPMEM_64BIT_DRIVER 104
 #define WINPMEM_32BIT_DRIVER 105
 
-#define PAGE_SIZE 0x1000
 
 // We use this special section to mark the beginning of the pmem metadata
 // region. Note that the metadata region extends past the end of this physical
 // header - it is guaranteed to be the last section. This allows users to simply
 // add notes by appending them to the end of the file (e.g. with a hex editor).
-#define PT_PMEM_METADATA (PT_LOOS + 0xd656d70)
+// #define PT_PMEM_METADATA (PT_LOOS + 0xd656d70)
 
 
 class WinPmem 
@@ -106,109 +110,6 @@ class WinPmem64: public WinPmem
 };
 
 
-
-// #define IOCTL_GET_INFO CTL_CODE(FILE_DEVICE_UNKNOWN, 0x103, METHOD_BUFFERED, FILE_READ_DATA | FILE_WRITE_DATA)
-// #define PMEM_INFO_IOCTRL CTL_CODE(FILE_DEVICE_UNKNOWN, 0x103, METHOD_NEITHER, FILE_READ_DATA | FILE_WRITE_DATA)
-
-// #define IOCTL_SET_MODE CTL_CODE(FILE_DEVICE_UNKNOWN, 0x101, METHOD_BUFFERED, FILE_READ_DATA | FILE_WRITE_DATA)
-// #define PMEM_CTRL_IOCTRL CTL_CODE(FILE_DEVICE_UNKNOWN, 0x101, METHOD_NEITHER, FILE_READ_DATA | FILE_WRITE_DATA)
-
-// #define IOCTL_WRITE_ENABLE CTL_CODE(FILE_DEVICE_UNKNOWN, 0x102, METHOD_BUFFERED, FILE_READ_DATA | FILE_WRITE_DATA)
-// #define PMEM_WRITE_ENABLE CTL_CODE(FILE_DEVICE_UNKNOWN, 0x102, METHOD_NEITHER, FILE_READ_DATA | FILE_WRITE_DATA)
-
-
-// ioctl to get memory ranges from our driver.
-// #define PMEM_CTRL_IOCTRL  CTL_CODE(0x22, 0x101, 0, 3)
-#define PMEM_CTRL_IOCTRL  CTL_CODE(0x22, 0x101, 3, 3) // 3 == NEITHER
-
-// #define PMEM_WRITE_ENABLE CTL_CODE(0x22, 0x102, 0, 3)
-#define PMEM_WRITE_ENABLE CTL_CODE(0x22, 0x102, 3, 3)
-
-// #define PMEM_INFO_IOCTRL  CTL_CODE(0x22, 0x103, 0, 3)
-#define PMEM_INFO_IOCTRL  CTL_CODE(0x22, 0x103, 3, 3)
-
-// Available modes
-#define PMEM_MODE_IOSPACE 0
-#define PMEM_MODE_PHYSICAL 1
-#define PMEM_MODE_PTE 2
-#define PMEM_MODE_PTE_PCI 3
-
-#define PMEM_MODE_AUTO 99
-
-#pragma pack(push, 2)
-typedef struct pmem_info_runs 
-{
-  __int64 start;
-  __int64 length;
-} PHYSICAL_MEMORY_RANGE;
-
-
-struct PmemMemoryInfo 
-{
-  LARGE_INTEGER CR3;
-  LARGE_INTEGER NtBuildNumber; // Version of this kernel.
-
-  LARGE_INTEGER KernBase;  // The base of the kernel image.
-
-
-  // The following are deprecated and will not be set by the driver. It is safer
-  // to get these during analysis from NtBuildNumberAddr below.
-  LARGE_INTEGER KDBG;  // xxx: I want that. Can I have it?
-
-  // xxx: Support up to 32/64  processors for KPCR. Depending on OS bitness
-  #if defined(_WIN64)
-  LARGE_INTEGER KPCR[64];
-  #else
-  LARGE_INTEGER KPCR[32];
-  #endif
-  // xxx: For what exactly do we need all those KPCRs, anyway? Sure, they look nice.
-
-  LARGE_INTEGER PfnDataBase;
-  LARGE_INTEGER PsLoadedModuleList;
-  LARGE_INTEGER PsActiveProcessHead;
-
-  // END DEPRECATED.
-
-  // The address of the NtBuildNumber integer - this is used to find the kernel
-  // base quickly.
-  LARGE_INTEGER NtBuildNumberAddr;
-
-  // As the driver is extended we can add fields here maintaining
-  // driver alignment..
-  LARGE_INTEGER Padding[0xfe]; // xxx: but you are a on-demand driver. You have no persistence.
-
-  LARGE_INTEGER NumberOfRuns;
-
-  // A Null terminated array of ranges.
-  PHYSICAL_MEMORY_RANGE Run[100];
-  /* 
-	here's an output from a HV quickcreated win10:
-	
-	
-  Using physical memory device for acquisition.
-	Memory range runs found: 956.
-	Error: AddMemoryRanges returned c0000004. output buffer size: 0x1078
-    * confirmed with latest MS sysinternal suite ramMap.
-	
-	10 minutes later, same machine:
-	
-	Using PTE Remapping for acquisition.
-	Memory range runs found: 1074.
-	Error: AddMemoryRanges returned c0000004. output buffer size: 0x48b8
-	
-	10 minutes later, same machine:
-	Using physical memory device for acquisition.
-	Memory range runs found: 1142.
-	Error: AddMemoryRanges returned c0000004. output buffer size: 0x48b8
-
-    == not only really weird small memory ranges run slices on a HV quickcreated VM, 
-	but also it's constantly changing (growing, I think)!! That's bad news.
-	
-	That's much more than 100. The usermode part should really be more flexible.
-  */
-};
-
-#pragma pack(pop)
 
 char *asprintf(const char *fmt, ...);
 TCHAR *aswprintf(const TCHAR *fmt, ...);

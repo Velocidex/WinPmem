@@ -17,6 +17,7 @@
 
 #include "kd.h"
 #include "SystemModInfoInvocation.h"
+#include "winpmem.h"
 
 // xxx: returns nt module base address as variatic hex number (SIZE_T).
 //      The perfect routine for PASSIVE_LEVEL drivers.
@@ -178,7 +179,7 @@ IMAGE_SECTION_HEADER* GetSection(IMAGE_DOS_HEADER *image_base, char *name)
   Enumerate the KPCR blocks from all CPUs.
 */
 
-void GetKPCR(struct PmemMemoryInfo *info) 
+void GetKPCR(PWINPMEM_MEMORY_INFO info) 
 {
 	// a bitmask of the currently active processors
 	unsigned __int64 active_processors = KeQueryActiveProcessors();

@@ -21,7 +21,7 @@
 #include "read.h"
 #include "kd.h"
 
-// xxx: slightly enhanced non-null pointer checking / kernel address space sanity checking.
+// slightly enhanced non-null pointer checking / kernel address space sanity checking.
 #if defined(_WIN64)
 SIZE_T ValidKernel = 0xffff000000000000;
 #else
@@ -33,7 +33,7 @@ SIZE_T ValidKernel = 0x80000000;
 // and reported to the user context.
 
 // The kernel CR3
-LARGE_INTEGER CR3;
+LARGE_INTEGER CR3;  // Floating global.
 
 DRIVER_UNLOAD IoUnload;
 
@@ -74,11 +74,10 @@ VOID IoUnload(IN PDRIVER_OBJECT DriverObject)
 
   - The Physical memory address ranges.
 */
-NTSTATUS AddMemoryRanges(struct PmemMemoryInfo *info, int len) 
+NTSTATUS AddMemoryRanges(PWINPMEM_MEMORY_INFO info) 
 {
   PPHYSICAL_MEMORY_RANGE MmPhysicalMemoryRange = MmGetPhysicalMemoryRanges();
   int number_of_runs = 0;
-  int required_length;
 
   // Enumerate address ranges.
   // This routine returns the virtual address of a nonpaged pool block which contains the physical memory ranges in the system.
@@ -90,7 +89,7 @@ NTSTATUS AddMemoryRanges(struct PmemMemoryInfo *info, int len)
   if (MmPhysicalMemoryRange == NULL) 
   {
     return STATUS_ACCESS_DENIED;
-  };
+  }
 
   /** Find out how many ranges there are. */
   for(number_of_runs=0;
@@ -100,13 +99,8 @@ NTSTATUS AddMemoryRanges(struct PmemMemoryInfo *info, int len)
 	  
 	WinDbgPrint("Memory range runs found: %d.\n",number_of_runs);
 
-  required_length = (sizeof(struct PmemMemoryInfo) +
-                     number_of_runs * sizeof(PHYSICAL_MEMORY_RANGE));
-
   /* Do we have enough space? */
-  if(len < required_length) return STATUS_INFO_LENGTH_MISMATCH;
-
-  RtlZeroMemory(info, required_length);
+  if (number_of_runs > NUMBER_OF_RUNS) return STATUS_INFO_LENGTH_MISMATCH;
 
   info->NumberOfRuns.QuadPart = number_of_runs;
   RtlCopyMemory(&info->Run[0], MmPhysicalMemoryRange, number_of_runs * sizeof(PHYSICAL_MEMORY_RANGE));
@@ -114,7 +108,7 @@ NTSTATUS AddMemoryRanges(struct PmemMemoryInfo *info, int len)
   ExFreePool(MmPhysicalMemoryRange);
 
   return STATUS_SUCCESS;
-};
+}
 
 __drv_dispatchType(IRP_MJ_CREATE) DRIVER_DISPATCH wddCreate;
 
@@ -169,9 +163,10 @@ NTSTATUS wddDispatchDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
   ULONG IoControlCode;
   PVOID inBuffer;
   PVOID outBuffer;
+  u32 mode = 1;
   PDEVICE_EXTENSION ext;
   ULONG InputLen, OutputLen;
-  struct PmemMemoryInfo * info; // PTR
+  PWINPMEM_MEMORY_INFO info; // PTR
   LARGE_INTEGER kernelbase;
   
   PAGED_CODE();
@@ -211,17 +206,17 @@ NTSTATUS wddDispatchDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 		goto exit;
 	}
 
-    if (OutputLen < sizeof(struct PmemMemoryInfo)) 
+    if (OutputLen < sizeof(WINPMEM_MEMORY_INFO)) 
 	{
-		DbgPrint("Error: outbuffer too small for even the smallest info struct!\n");
+		DbgPrint("Error: outbuffer too small for the info struct!\n");
         status = STATUS_INFO_LENGTH_MISMATCH;
         goto exit;
     }
 	
 	try 
 	{
-		ProbeForRead( outBuffer, sizeof(struct PmemMemoryInfo), sizeof( UCHAR ) ); 
-		ProbeForWrite( outBuffer, sizeof(struct PmemMemoryInfo), sizeof( UCHAR ) ); 
+		ProbeForRead( outBuffer, sizeof(WINPMEM_MEMORY_INFO), sizeof( UCHAR ) ); 
+		ProbeForWrite( outBuffer, sizeof(WINPMEM_MEMORY_INFO), sizeof( UCHAR ) ); 
 	}
 	except(EXCEPTION_EXECUTE_HANDLER)
 	{
@@ -235,9 +230,9 @@ NTSTATUS wddDispatchDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	info = (void *) outBuffer;
 
     // Ensure we clear the buffer first.
-    RtlZeroMemory(info, sizeof(struct PmemMemoryInfo));
+    RtlZeroMemory(info, sizeof(WINPMEM_MEMORY_INFO));
 
-	status = AddMemoryRanges(info, OutputLen);
+	status = AddMemoryRanges(info);
 
     if (status != STATUS_SUCCESS) 
 	{
@@ -254,7 +249,6 @@ NTSTATUS wddDispatchDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     info->NtBuildNumber.QuadPart = (SIZE_T) *NtBuildNumber;
     info->NtBuildNumberAddr.QuadPart = (SIZE_T) NtBuildNumber;
     kernelbase.QuadPart = KernelGetModuleBaseByPtr(); // I like to have that saved first in normal kernelspace und not directly into usermode buffer.
-	// xxx: I'd like a KDBG here, too.
 	
 	if (kernelbase.QuadPart) WinDbgPrint("Kernelbase: %016llx.\n",kernelbase.QuadPart);
 	
@@ -264,7 +258,7 @@ NTSTATUS wddDispatchDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     GetKPCR(info);
 
     // This is the length of the response.
-    Irp->IoStatus.Information = sizeof(struct PmemMemoryInfo) + info->NumberOfRuns.LowPart * sizeof(PHYSICAL_MEMORY_RANGE);
+    Irp->IoStatus.Information = sizeof(WINPMEM_MEMORY_INFO);
 
     status = STATUS_SUCCESS;
   }; break;
@@ -296,23 +290,23 @@ NTSTATUS wddDispatchDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	
 	// security checks finished
 
-      enum PMEM_ACQUISITION_MODE mode = *(u32 *) inBuffer; 
+      mode = *(u32 *) inBuffer; 
 
       switch(mode) 
 	  {
-      case ACQUISITION_MODE_PHYSICAL_MEMORY:
+      case PMEM_MODE_PHYSICAL:
         WinDbgPrint("Using physical memory device for acquisition.\n");
         status = STATUS_SUCCESS;
 		ext->mode = mode;
         break;
 
-      case ACQUISITION_MODE_MAP_IO_SPACE:
+      case PMEM_MODE_IOSPACE:
         WinDbgPrint("Using MmMapIoSpace for acquisition.\n");
         status = STATUS_SUCCESS;
 		ext->mode = mode;
         break;
 
-      case ACQUISITION_MODE_PTE_MMAP:
+      case PMEM_MODE_PTE:
         if (!(ext->pte_mmapper)) 
 		{
 			WinDbgPrint("Kernel APIs required for this method are not available.\n");
@@ -375,7 +369,7 @@ NTSTATUS DriverEntry (IN PDRIVER_OBJECT DriverObject,
   
   UNREFERENCED_PARAMETER(RegistryPath);
 
-  WinDbgPrint("WinPMEM - " PMEM_VERSION " \n");
+  WinDbgPrint("WinPMEM - " PMEM_DRIVER_VERSION " \n");
 
 #if PMEM_WRITE_ENABLED == 1
   WinDbgPrint("WinPMEM write support available!\n");
@@ -452,7 +446,7 @@ NTSTATUS DriverEntry (IN PDRIVER_OBJECT DriverObject,
 
   // Initialize the device extension with safe defaults.
   extension = DeviceObject->DeviceExtension;
-  extension->mode = ACQUISITION_MODE_PHYSICAL_MEMORY;
+  extension->mode = PMEM_MODE_PHYSICAL;
   extension->MemoryHandle = 0;
 
 #if defined(_WIN64)
@@ -466,7 +460,7 @@ NTSTATUS DriverEntry (IN PDRIVER_OBJECT DriverObject,
   }
   extension->pte_mmapper->loglevel = PTE_ERR;
   
-  // extension->mode = ACQUISITION_MODE_PTE_MMAP;
+  // extension->mode = PMEM_MODE_PTE;
 #else
   extension->pte_mmapper = NULL;
 #endif

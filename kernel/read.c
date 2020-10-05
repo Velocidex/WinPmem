@@ -18,6 +18,7 @@
 */
 
 #include "read.h"
+#include "winpmem.h"
 
 // xxx: 
 // This function's secret unspoken true name is "openPhysMemSectionHandle".
@@ -331,15 +332,15 @@ NTSTATUS PmemRead(IN PDEVICE_OBJECT  DeviceObject, IN PIRP  Irp)
 	//DbgPrint(" - BufLen: 0x%x\r\n", BufLen);
 	//DbgPrint(" - BufOffset: 0x%llx\r\n", BufOffset.QuadPart);
 
-	if ((extension->mode) == ACQUISITION_MODE_PHYSICAL_MEMORY)
+	if ((extension->mode) == PMEM_MODE_PHYSICAL)
 	{
 		status = DeviceRead(extension, BufOffset, toxic_buffer, BufLen, &total_read, PhysicalMemoryPartialRead);
 	}
-	else if ((extension->mode) == ACQUISITION_MODE_MAP_IO_SPACE)
+	else if ((extension->mode) == PMEM_MODE_IOSPACE)
 	{
 		status = DeviceRead(extension, BufOffset, toxic_buffer, BufLen, &total_read, MapIOPagePartialRead);
 	}
-	else if ((extension->mode) == ACQUISITION_MODE_PTE_MMAP)
+	else if ((extension->mode) == PMEM_MODE_PTE)
 	{
 		status = DeviceRead(extension, BufOffset, toxic_buffer, BufLen, &total_read, PTEMmapPartialRead);
 	}

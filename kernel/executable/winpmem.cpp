@@ -152,7 +152,7 @@ __int64 WinPmem::set_write_enabled(void)
 	DWORD size;
 	BOOL result = FALSE;
 
-	result = DeviceIoControl(fd_, PMEM_WRITE_ENABLE, 
+	result = DeviceIoControl(fd_, IOCTL_WRITE_ENABLE, 
 							  &mode, 4, // in
 							  NULL, 0, // out
 							  &size, NULL);
@@ -193,14 +193,14 @@ void WinPmem::print_mode_(unsigned __int32 mode)
 // Display information about the memory geometry.
 void WinPmem::print_memory_info() 
 {
-	struct PmemMemoryInfo info;
+	WINPMEM_MEMORY_INFO info;
 	__int64 i=0;
 	DWORD size;
 	BOOL result = FALSE;
 	
-	result = DeviceIoControl(fd_, PMEM_INFO_IOCTRL, 
+	result = DeviceIoControl(fd_, IOCTL_GET_INFO, 
 					  NULL, 0, // in
-					  (char *)&info, sizeof(info), // out
+					  (char *)&info, sizeof(WINPMEM_MEMORY_INFO), // out
 					  &size, NULL);
 
 	// Get the memory ranges.
@@ -214,8 +214,8 @@ void WinPmem::print_memory_info()
 
 	for (i=0; i < info.NumberOfRuns.QuadPart; i++) 
 	{
-		Log(TEXT("Start 0x%08llX - Length 0x%08llX\n"), info.Run[i].start, info.Run[i].length);
-		max_physical_memory_ = info.Run[i].start + info.Run[i].length;
+		Log(TEXT("Start 0x%08llX - Length 0x%08llX\n"), info.Run[i].BaseAddress.QuadPart, info.Run[i].NumberOfBytes.QuadPart);
+		max_physical_memory_ = info.Run[i].BaseAddress.QuadPart + info.Run[i].NumberOfBytes.QuadPart;
 	}
 	
 	Log(TEXT("max_physical_memory_ 0x%llx\n"), max_physical_memory_);
@@ -226,27 +226,6 @@ void WinPmem::print_memory_info()
 	print_mode_(mode_);
 	Log(TEXT("\n"));
 
-	if (mode_ == PMEM_MODE_PTE_PCI) 
-	{
-		ULONGLONG installed_memory = 0;
-		MEMORYSTATUSEX statusx;
-
-		statusx.dwLength = sizeof(statusx);
-
-		if (GlobalMemoryStatusEx (&statusx)) 
-		{
-		  max_physical_memory_ = statusx.ullTotalPhys * 3 / 2;
-		  Log(TEXT("Max physical memory guessed at 0x%08llX\n"),
-				   max_physical_memory_);
-
-		} 
-		else 
-		{
-		  Log(TEXT("Unable to guess max physical memory. Just Ctrl-C when done.\n"));
-		}
-	}
-	Log(TEXT("\n"));
-
 	error:
 	return;
 }
@@ -255,13 +234,15 @@ __int64 WinPmem::set_acquisition_mode(unsigned __int32 mode)
 {
 	DWORD size;
 	BOOL result = FALSE;
-
-	if (mode == PMEM_MODE_AUTO) 
+	
+	// let's do some sanity checking first.
+	if (! ((mode == PMEM_MODE_IOSPACE) || (mode == PMEM_MODE_PHYSICAL) || (mode == PMEM_MODE_PTE)) )
 	{
-		mode =   PMEM_MODE_PHYSICAL;
+		Log(TEXT("This mode does not exist!"));
+		return -1;
 	}
 
-	result = DeviceIoControl(fd_, PMEM_CTRL_IOCTRL, 
+	result = DeviceIoControl(fd_, IOCTL_SET_MODE, 
 						&mode, 4, // in
 						NULL, 0,  // out
 					  &size, NULL);
@@ -317,7 +298,7 @@ exit:
 __int64 WinPmem::write_raw_image() 
 {
 	// Somewhere to store the info from the driver;
-	struct PmemMemoryInfo info;
+	WINPMEM_MEMORY_INFO info;
 	DWORD size;
 	BOOL result = FALSE;
 	__int64 i;
@@ -329,12 +310,12 @@ __int64 WinPmem::write_raw_image()
 		goto exit;
 	}
 
-	RtlZeroMemory(&info, sizeof(info));
+	RtlZeroMemory(&info, sizeof(WINPMEM_MEMORY_INFO));
 
 	// Get the memory ranges.
-	result = DeviceIoControl(fd_, PMEM_INFO_IOCTRL, 
+	result = DeviceIoControl(fd_, IOCTL_GET_INFO, 
 						NULL, 0, // in
-						(char *)&info, sizeof(info), // out
+						(char *)&info, sizeof(WINPMEM_MEMORY_INFO), // out
 						&size, NULL);
 						
 	if (!(result)) 
@@ -345,7 +326,12 @@ __int64 WinPmem::write_raw_image()
 	}
 
 	Log(TEXT("Will generate a RAW image\n"));
+	
+	#ifdef _WIN64
 	printf(" - buffer_size_: 0x%llx\n", buffer_size_);
+	#else
+	printf(" - buffer_size_: 0x%x\n", buffer_size_);
+	#endif
 	
 	print_memory_info();
 
@@ -356,12 +342,12 @@ __int64 WinPmem::write_raw_image()
 	
 	for(i=0; i < info.NumberOfRuns.QuadPart; i++) 
 	{
-		if(info.Run[i].start > current) 
+		if(info.Run[i].BaseAddress.QuadPart > current) 
 		{
 			// pad zeros from current until begin of next RAM memory region.
-		  printf("Padding from 0x%08llX to 0x%08llX\n", current, info.Run[i].start);
+		  printf("Padding from 0x%08llX to 0x%08llX\n", current, info.Run[i].BaseAddress.QuadPart);
 		  
-		  if (!pad(info.Run[i].start - current)) 
+		  if (!pad(info.Run[i].BaseAddress.QuadPart - current)) 
 		  {
 			printf("padding went terribly wrong! Cancelling & terminating. \n");
 			goto exit;
@@ -370,11 +356,11 @@ __int64 WinPmem::write_raw_image()
 		
 		// write next RAM memory region to file.
 
-		copy_memory(info.Run[i].start, info.Run[i].start + info.Run[i].length);
+		copy_memory(info.Run[i].BaseAddress.QuadPart, info.Run[i].BaseAddress.QuadPart + info.Run[i].NumberOfBytes.QuadPart);
 		
 		// update current cursor offset.
 		
-		current = info.Run[i].start + info.Run[i].length;
+		current = info.Run[i].BaseAddress.QuadPart + info.Run[i].NumberOfBytes.QuadPart;
 	}
 
 	// All is well.
@@ -597,7 +583,7 @@ __int64 WinPmem::install_driver()
 
 	Log(L"Loaded Driver %s.\n", driver_filename_);
 
-	fd_ = CreateFile(TEXT("\\\\.\\") TEXT(PMEM_DEVICE_NAME),
+	fd_ = CreateFile(TEXT("\\\\.\\") TEXT(PMEM_DEVICE_NAME_ASCII),
 				   // Write is needed for IOCTL.
 				   GENERIC_READ | GENERIC_WRITE,
 				   FILE_SHARE_READ | FILE_SHARE_WRITE,
@@ -660,7 +646,7 @@ __int64 WinPmem::uninstall_driver()
 /* Create a YAML file describing the image encoded into a null terminated
    string. Caller will own the memory.
  */
-char *store_metadata_(struct PmemMemoryInfo *info) 
+char *store_metadata_(PWINPMEM_MEMORY_INFO info) 
 {
 	SYSTEM_INFO sys_info;
 	struct tm newtime;
@@ -703,7 +689,7 @@ char *store_metadata_(struct PmemMemoryInfo *info)
 	return asprintf(// A YAML File describing metadata about this image.
 				  "# PMEM\n"
 				  "---\n"   // The start of the YAML file.
-				  "acquisition_tool: 'WinPMEM " PMEM_VERSION "'\n"
+				  "acquisition_tool: 'WinPMEM, driver version: " PMEM_DRIVER_VERSION "'\n"
 				  "acquisition_timestamp: %s\n"
 				  "CR3: %#llx\n"
 				  "NtBuildNumber: %#llx\n"
