@@ -64,9 +64,11 @@ NOTE: Do not forget to invoke winpmem as admin/elevated!
 
 Examples:
 winpmem.exe physmem.raw
+
 Writes a raw image to physmem.raw using the default method of acquisition.
 
 winpmem.exe 
+
 Invokes the usage print / short manual.
 
 To acquire a raw image using specifically the MmMapIoSpace method:
