@@ -256,9 +256,9 @@ NTSTATUS wddDispatchDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     kernelbase.QuadPart = KernelGetModuleBaseByPtr(); // I like to have that saved first in normal kernelspace und not directly into usermode buffer.
 	// xxx: I'd like a KDBG here, too.
 	
-	ASSERT((SIZE_T) kernelbase.QuadPart > ValidKernel);
-	WinDbgPrint("Kernelbase: %016llx.\n",kernelbase.QuadPart);
-	info->KernBase.QuadPart = KernelGetModuleBaseByPtr();
+	if (kernelbase.QuadPart) WinDbgPrint("Kernelbase: %016llx.\n",kernelbase.QuadPart);
+	
+	info->KernBase.QuadPart = kernelbase.QuadPart;
 
     // Fill in KPCR.
     GetKPCR(info);
@@ -429,15 +429,6 @@ NTSTATUS DriverEntry (IN PDRIVER_OBJECT DriverObject,
   
 	DeviceObject->Flags &= ~DO_DEVICE_INITIALIZING; // xxx: I/O manager will do that anyway because it's in the driver entry.
 
-  /*
-  xxx:
-  it's either BUFFERED OR DIRECT I/O.
-  We could really use DIRECT I/O. Or NEITHER. 
-  Writing the dump is REALLY SLOW currently. Worryingly so when it comes to 8 or 16 GB. 
-   A rootkit is not nice and it will not wait and do a pending on its evil actions until the dump has been fully written. 
-   A fast readwrite-dumpfile method could really help! 
-  */
-
   RtlInitUnicodeString (&DeviceLink, L"\\??\\" PMEM_DEVICE_NAME);
 
   NtStatus = IoCreateSymbolicLink (&DeviceLink, &DeviceName);
@@ -464,7 +455,7 @@ NTSTATUS DriverEntry (IN PDRIVER_OBJECT DriverObject,
   extension->mode = ACQUISITION_MODE_PHYSICAL_MEMORY;
   extension->MemoryHandle = 0;
 
-#if _WIN64
+#if defined(_WIN64)
   // Disable pte mapping for 32 bit systems.
   extension->pte_mmapper = pte_mmap_windows_new();
   
@@ -482,7 +473,7 @@ NTSTATUS DriverEntry (IN PDRIVER_OBJECT DriverObject,
 
   ExInitializeFastMutex(&extension->mu);
 
-  WinDbgPrint("Driver intialization completed.\n");
+  WinDbgPrint("Driver initialization completed.\n");
   return NtStatus;
 
  error:

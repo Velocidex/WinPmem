@@ -70,10 +70,17 @@ SIZE_T KernelGetModuleBaseByPtr()
 		{
 			for (j=0;j<250;j++)
 			{
-				if (((pSystemModuleInformation->Module[i].ImageName[j+0] | 0x20) == 'n') &&
-					((pSystemModuleInformation->Module[i].ImageName[j+1] | 0x20) == 't') &&
-					((pSystemModuleInformation->Module[i].ImageName[j+2] | 0x20) == 'o') &&
-					((pSystemModuleInformation->Module[i].ImageName[j+3] | 0x20) == 's'))
+				// There are so many names for NT kernels: ntoskrnl, ntkrpamp, ...
+				if (
+						((pSystemModuleInformation->Module[i].ImageName[j+0] | 0x20) == 'n') &&
+						((pSystemModuleInformation->Module[i].ImageName[j+1] | 0x20) == 't') &&
+					
+						(((pSystemModuleInformation->Module[i].ImageName[j+2] | 0x20) == 'o') &&
+						((pSystemModuleInformation->Module[i].ImageName[j+3] | 0x20) == 's'))
+						||
+						(((pSystemModuleInformation->Module[i].ImageName[j+2] | 0x20) == 'k') &&
+						((pSystemModuleInformation->Module[i].ImageName[j+3] | 0x20) == 'r'))
+					) // end of nt kernel name check.
 					{
 						imagebase_of_nt = (SIZE_T) pSystemModuleInformation->Module[i].Base;
 						return imagebase_of_nt;
