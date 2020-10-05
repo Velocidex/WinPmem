@@ -72,6 +72,7 @@ winpmem.exe
 Invokes the usage print / short manual.
 
 To acquire a raw image using specifically the MmMapIoSpace method:
+
 c:\..> winpmem.exe -1 myimage.raw
 
 The driver will be automatically unloaded after the image is acquired!
