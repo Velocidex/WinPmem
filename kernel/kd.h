@@ -27,4 +27,12 @@ PVOID KernelGetProcAddress(void *image_base, char *func_name);
 
 void GetKPCR(PWINPMEM_MEMORY_INFO info);
 
-#endif // _WINPMEM_KD_H
+#ifdef ALLOC_PRAGMA
+
+#pragma alloc_text( PAGE , KernelGetModuleBaseByPtr )
+#pragma alloc_text( PAGE , KernelGetProcAddress ) 
+#pragma alloc_text( PAGE , GetKPCR ) 
+
+#endif
+
+#endif // end of _WINPMEM_KD_H

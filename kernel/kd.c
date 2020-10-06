@@ -96,7 +96,7 @@ SIZE_T KernelGetModuleBaseByPtr()
 }
 
 
-// xxx: get proc address for kernel space
+// xxx: get proc address for kernel space. Nice.
 // could support irql > 0.
 void *KernelGetProcAddress(void *image_base, char *func_name) {
   void *func_address = NULL;
@@ -213,8 +213,6 @@ void GetKPCR(PWINPMEM_MEMORY_INFO info)
 
 	KeRevertToUserAffinityThread(); 
 	// xxx: I don't think this works for reverting to original affinity but the alternative requires Vista or higher.
-	// xxx: the WDK10 does not support WinXP anymore! 
-	//      Maybe we could favor the newer Vista+ Ex version? To perfectly restore the old affinity?
 
 	return;
 }

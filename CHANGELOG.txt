@@ -3,10 +3,9 @@
 
 New features & major revision (see below).
 
-Info: the CTL code numbers changed (again). 
-The CTL codes are now found in "userspace_interface/CTL_codes.h", along with other shared user data.
-
 Changes:
+
+* FAST I/O read. (Who needs IRPs when there is FAST I/O? ;-))
 
 * Fixed errors occurring with x86.
 
@@ -48,8 +47,6 @@ Changes:
 
 
 TODO/wishlist:
-
-* Additional FAST I/O read support. (Because we can? :D)
 
 * Nicer icon?
 

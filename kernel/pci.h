@@ -46,3 +46,9 @@
 #define PCI_HEADER_TYPE         0x0e    /* 8 bits */
 
 NTSTATUS PCI_AddMemoryRanges(PWINPMEM_MEMORY_INFO info, int len);
+
+#ifdef ALLOC_PRAGMA
+
+#pragma alloc_text( PAGE , PCI_AddMemoryRanges )
+
+#endif
