@@ -1,6 +1,7 @@
 /*
   Copyright 2018 Velocidex Innovations <mike@velocidex.com>
   Copyright 2014-2017 Google Inc.
+  Authors: Viviane Zwanger, Michael Cohen <mike@velocidex.com>
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -20,7 +21,7 @@
 #include "read.h"
 #include "kd.h"
 
-// xxx: slightly enhanced non-null pointer checking / kernel address space sanity checking.
+// slightly enhanced non-null pointer checking / kernel address space sanity checking.
 #if defined(_WIN64)
 SIZE_T ValidKernel = 0xffff000000000000;
 #else
@@ -32,7 +33,7 @@ SIZE_T ValidKernel = 0x80000000;
 // and reported to the user context.
 
 // The kernel CR3
-LARGE_INTEGER CR3;
+LARGE_INTEGER CR3;  // Floating global.
 
 DRIVER_UNLOAD IoUnload;
 
@@ -73,11 +74,10 @@ VOID IoUnload(IN PDRIVER_OBJECT DriverObject)
 
   - The Physical memory address ranges.
 */
-NTSTATUS AddMemoryRanges(struct PmemMemoryInfo *info, int len) 
+NTSTATUS AddMemoryRanges(PWINPMEM_MEMORY_INFO info) 
 {
   PPHYSICAL_MEMORY_RANGE MmPhysicalMemoryRange = MmGetPhysicalMemoryRanges();
   int number_of_runs = 0;
-  int required_length;
 
   // Enumerate address ranges.
   // This routine returns the virtual address of a nonpaged pool block which contains the physical memory ranges in the system.
@@ -89,7 +89,7 @@ NTSTATUS AddMemoryRanges(struct PmemMemoryInfo *info, int len)
   if (MmPhysicalMemoryRange == NULL) 
   {
     return STATUS_ACCESS_DENIED;
-  };
+  }
 
   /** Find out how many ranges there are. */
   for(number_of_runs=0;
@@ -99,13 +99,8 @@ NTSTATUS AddMemoryRanges(struct PmemMemoryInfo *info, int len)
 	  
 	WinDbgPrint("Memory range runs found: %d.\n",number_of_runs);
 
-  required_length = (sizeof(struct PmemMemoryInfo) +
-                     number_of_runs * sizeof(PHYSICAL_MEMORY_RANGE));
-
   /* Do we have enough space? */
-  if(len < required_length) return STATUS_INFO_LENGTH_MISMATCH;
-
-  RtlZeroMemory(info, required_length);
+  if (number_of_runs > NUMBER_OF_RUNS) return STATUS_INFO_LENGTH_MISMATCH;
 
   info->NumberOfRuns.QuadPart = number_of_runs;
   RtlCopyMemory(&info->Run[0], MmPhysicalMemoryRange, number_of_runs * sizeof(PHYSICAL_MEMORY_RANGE));
@@ -113,7 +108,7 @@ NTSTATUS AddMemoryRanges(struct PmemMemoryInfo *info, int len)
   ExFreePool(MmPhysicalMemoryRange);
 
   return STATUS_SUCCESS;
-};
+}
 
 __drv_dispatchType(IRP_MJ_CREATE) DRIVER_DISPATCH wddCreate;
 
@@ -168,9 +163,10 @@ NTSTATUS wddDispatchDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
   ULONG IoControlCode;
   PVOID inBuffer;
   PVOID outBuffer;
+  u32 mode = 1;
   PDEVICE_EXTENSION ext;
   ULONG InputLen, OutputLen;
-  struct PmemMemoryInfo * info; // PTR
+  PWINPMEM_MEMORY_INFO info; // PTR
   LARGE_INTEGER kernelbase;
   
   PAGED_CODE();
@@ -187,9 +183,9 @@ NTSTATUS wddDispatchDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
   IrpStack = IoGetCurrentIrpStackLocation(Irp);
 
-
-  inBuffer = Irp->AssociatedIrp.SystemBuffer;
-  outBuffer = Irp->AssociatedIrp.SystemBuffer;  // same buffer ...
+  inBuffer = IrpStack->Parameters.DeviceIoControl.Type3InputBuffer;
+  outBuffer = Irp->UserBuffer;
+  // IoBuffer = Irp->AssociatedIrp.SystemBuffer;
   
   
   OutputLen = IrpStack->Parameters.DeviceIoControl.OutputBufferLength;
@@ -210,19 +206,33 @@ NTSTATUS wddDispatchDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 		goto exit;
 	}
 
-    if (OutputLen < sizeof(struct PmemMemoryInfo)) 
+    if (OutputLen < sizeof(WINPMEM_MEMORY_INFO)) 
 	{
-		DbgPrint("Error: outbuffer too small for even the smallest info struct!\n");
+		DbgPrint("Error: outbuffer too small for the info struct!\n");
         status = STATUS_INFO_LENGTH_MISMATCH;
         goto exit;
     }
 	
+	try 
+	{
+		ProbeForRead( outBuffer, sizeof(WINPMEM_MEMORY_INFO), sizeof( UCHAR ) ); 
+		ProbeForWrite( outBuffer, sizeof(WINPMEM_MEMORY_INFO), sizeof( UCHAR ) ); 
+	}
+	except(EXCEPTION_EXECUTE_HANDLER)
+	{
+		status = GetExceptionCode();
+		DbgPrint("Error: 0x%08x, probe in Device io dispatch, outbuffer. A naughty process sent us a bad/nonexisting buffer.\n", status); 
+		
+		status = STATUS_SUCCESS; // to the I/O manager: everything's under control. Nothing to see here.
+		goto exit;
+	}
+	
 	info = (void *) outBuffer;
 
     // Ensure we clear the buffer first.
-    RtlZeroMemory(info, sizeof(struct PmemMemoryInfo));
+    RtlZeroMemory(info, sizeof(WINPMEM_MEMORY_INFO));
 
-	status = AddMemoryRanges(info, OutputLen);
+	status = AddMemoryRanges(info);
 
     if (status != STATUS_SUCCESS) 
 	{
@@ -239,17 +249,16 @@ NTSTATUS wddDispatchDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     info->NtBuildNumber.QuadPart = (SIZE_T) *NtBuildNumber;
     info->NtBuildNumberAddr.QuadPart = (SIZE_T) NtBuildNumber;
     kernelbase.QuadPart = KernelGetModuleBaseByPtr(); // I like to have that saved first in normal kernelspace und not directly into usermode buffer.
-	// xxx: I'd like a KDBG here, too.
 	
-	ASSERT((SIZE_T) kernelbase.QuadPart > ValidKernel);
-	WinDbgPrint("Kernelbase: %016llx.\n",kernelbase.QuadPart);
-	info->KernBase.QuadPart = KernelGetModuleBaseByPtr();
+	if (kernelbase.QuadPart) WinDbgPrint("Kernelbase: %016llx.\n",kernelbase.QuadPart);
+	
+	info->KernBase.QuadPart = kernelbase.QuadPart;
 
     // Fill in KPCR.
     GetKPCR(info);
 
     // This is the length of the response.
-    Irp->IoStatus.Information = sizeof(struct PmemMemoryInfo) + info->NumberOfRuns.LowPart * sizeof(PHYSICAL_MEMORY_RANGE);
+    Irp->IoStatus.Information = sizeof(WINPMEM_MEMORY_INFO);
 
     status = STATUS_SUCCESS;
   }; break;
@@ -259,30 +268,45 @@ NTSTATUS wddDispatchDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
   {
     WinDbgPrint("Setting Acquisition mode.\n");
 	
-	if ((!(inBuffer)) || (InputLen < sizeof(u32)))
+	if ((!(inBuffer)) || (InputLen < sizeof(u32))) // are you really sure an enum is a u32?
 	{
 		DbgPrint("InBuffer in device io dispatch was invalid.\n");
 		status = STATUS_INFO_LENGTH_MISMATCH;
 		goto exit;
 	}
+	
+	try 
+	{
+		ProbeForRead( inBuffer, sizeof(u32), sizeof( UCHAR ) ); 
+	}
+	except(EXCEPTION_EXECUTE_HANDLER)
+	{
+		status = GetExceptionCode();
+		DbgPrint("Error: 0x%08x, probe in Device io dispatch, Inbuffer. A naughty process sent us a bad/nonexisting buffer.\n", status); 
+		
+		status = STATUS_SUCCESS; // to the I/O manager: everything's under control. Nothing to see here.
+		goto exit;
+	}
+	
+	// security checks finished
 
-      enum PMEM_ACQUISITION_MODE mode = *(u32 *) inBuffer; 
+      mode = *(u32 *) inBuffer; 
 
       switch(mode) 
 	  {
-      case ACQUISITION_MODE_PHYSICAL_MEMORY:
+      case PMEM_MODE_PHYSICAL:
         WinDbgPrint("Using physical memory device for acquisition.\n");
         status = STATUS_SUCCESS;
 		ext->mode = mode;
         break;
 
-      case ACQUISITION_MODE_MAP_IO_SPACE:
+      case PMEM_MODE_IOSPACE:
         WinDbgPrint("Using MmMapIoSpace for acquisition.\n");
         status = STATUS_SUCCESS;
 		ext->mode = mode;
         break;
 
-      case ACQUISITION_MODE_PTE_MMAP:
+      case PMEM_MODE_PTE:
         if (!(ext->pte_mmapper)) 
 		{
 			WinDbgPrint("Kernel APIs required for this method are not available.\n");
@@ -345,7 +369,7 @@ NTSTATUS DriverEntry (IN PDRIVER_OBJECT DriverObject,
   
   UNREFERENCED_PARAMETER(RegistryPath);
 
-  WinDbgPrint("WinPMEM - " PMEM_VERSION " \n");
+  WinDbgPrint("WinPMEM - " PMEM_DRIVER_VERSION " \n");
 
 #if PMEM_WRITE_ENABLED == 1
   WinDbgPrint("WinPMEM write support available!\n");
@@ -390,22 +414,14 @@ NTSTATUS DriverEntry (IN PDRIVER_OBJECT DriverObject,
 
 	DriverObject->DriverUnload = IoUnload;
 	
-	DeviceObject->Flags &= ~DO_DIRECT_IO; // (Not needed according to Walter Oney.)
-	DeviceObject->Flags |= DO_BUFFERED_IO;
+	// We need to set NEITHER, because otherwise for read/write requests the I/O manager cannot know where we except the usermode buffer.
+	DeviceObject->Flags &= ~DO_DIRECT_IO;
+	DeviceObject->Flags &= ~DO_BUFFERED_IO;
 	
   // SetFlag(DeviceObject->Flags, DO_BUFFERED_IO ); // xxx: we will still do BUFFERED I/O for GET_INFO, SET_MODE, and WRITE_ENABLE, 
 													// as they do not represent large amounts of data.
   
 	DeviceObject->Flags &= ~DO_DEVICE_INITIALIZING; // xxx: I/O manager will do that anyway because it's in the driver entry.
-
-  /*
-  xxx:
-  it's either BUFFERED OR DIRECT I/O.
-  We could really use DIRECT I/O. Or NEITHER. 
-  Writing the dump is REALLY SLOW currently. Worryingly so when it comes to 8 or 16 GB. 
-   A rootkit is not nice and it will not wait and do a pending on its evil actions until the dump has been fully written. 
-   A fast readwrite-dumpfile method could really help! 
-  */
 
   RtlInitUnicodeString (&DeviceLink, L"\\??\\" PMEM_DEVICE_NAME);
 
@@ -430,10 +446,10 @@ NTSTATUS DriverEntry (IN PDRIVER_OBJECT DriverObject,
 
   // Initialize the device extension with safe defaults.
   extension = DeviceObject->DeviceExtension;
-  extension->mode = ACQUISITION_MODE_PHYSICAL_MEMORY;
+  extension->mode = PMEM_MODE_PHYSICAL;
   extension->MemoryHandle = 0;
 
-#if _WIN64
+#if defined(_WIN64)
   // Disable pte mapping for 32 bit systems.
   extension->pte_mmapper = pte_mmap_windows_new();
   
@@ -444,14 +460,14 @@ NTSTATUS DriverEntry (IN PDRIVER_OBJECT DriverObject,
   }
   extension->pte_mmapper->loglevel = PTE_ERR;
   
-  // extension->mode = ACQUISITION_MODE_PTE_MMAP;
+  // extension->mode = PMEM_MODE_PTE;
 #else
   extension->pte_mmapper = NULL;
 #endif
 
   ExInitializeFastMutex(&extension->mu);
 
-  WinDbgPrint("Driver intialization completed.\n");
+  WinDbgPrint("Driver initialization completed.\n");
   return NtStatus;
 
  error:

@@ -1,5 +1,6 @@
 /*
    Copyright 2012 Michael Cohen <scudette@gmail.com>
+   Authors: Viviane Zwanger, Michael Cohen <mike@velocidex.com>
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -24,6 +25,6 @@ SIZE_T KernelGetModuleBaseByPtr();
 
 PVOID KernelGetProcAddress(void *image_base, char *func_name);
 
-void GetKPCR(struct PmemMemoryInfo *info);
+void GetKPCR(PWINPMEM_MEMORY_INFO info);
 
 #endif // _WINPMEM_KD_H
