@@ -1,7 +1,10 @@
+
+// contains: only the data for ZwQuerySystemInformation XI.
+
 #ifndef SystemModInfoInvocation_H
 #define SystemModInfoInvocation_H
 
-// xxx: please don't remove the #ifndef's.
+// Please don't remove the #ifndef's.
 
 #ifndef _SYSTEM_INFORMATION_CLASS
 #define SystemModuleInformation 11

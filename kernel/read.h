@@ -2,6 +2,7 @@
    This file implement methods for reading through the pmem device.
 
    Copyright 2012 Michael Cohen <scudette@gmail.com>
+   Authors: Viviane Zwanger, Michael Cohen <mike@velocidex.com>
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -22,14 +23,13 @@
 #include "winpmem.h"
 
 /* Read a page through the PhysicalMemory device. */
-LONG PhysicalMemoryPartialRead(IN PDEVICE_EXTENSION extension,
-                               LARGE_INTEGER offset, PCHAR buf, ULONG count);
+ULONG PhysicalMemoryPartialRead(IN PDEVICE_EXTENSION extension, LARGE_INTEGER offset, unsigned char * buf, ULONG count);
 
-/* Read a large buffer by concatenating lots of small reads. */
-NTSTATUS DeviceRead(IN PDEVICE_EXTENSION extension, LARGE_INTEGER offset,
-                    PCHAR buf, ULONG count, OUT ULONG *total_read,
-                    LONG (*handler)(IN PDEVICE_EXTENSION,
-                                    LARGE_INTEGER, PCHAR, ULONG)
+NTSTATUS DeviceRead(	IN PDEVICE_EXTENSION extension, 
+						LARGE_INTEGER offset,
+						unsigned char * toxic_buffer, ULONG howMuchToRead, 
+						OUT ULONG *total_read,
+						ULONG (*handler)(IN PDEVICE_EXTENSION, LARGE_INTEGER, unsigned char *, ULONG)
                     );
 
 

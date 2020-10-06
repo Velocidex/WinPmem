@@ -1,6 +1,7 @@
-* Buffered I/O version.
-* Source works for WinXP - Win10, x86 + x64. (with certain limitations , see issues below)
-* current ready-to-use binaries are testsigned and compiled *only* for Win7-Win10, x86 + x64.
+(5. Oct 2020)
+
+* The *Source code* works for WinXP - Win10, x86 + x64. (with certain limitations , see issues below)
+* Current ready-to-use binaries are testsigned and compiled *only* for Win7-Win10, x86 + x64.
 * Intermediate version and subject of sudden changes.
 
 Known issues: 
@@ -9,4 +10,4 @@ Known issues:
 * Microsoft bug/glitch: on Hyper-V, the longer a VM runs with the "Dynamic memory" feature enabled, the more fragmentation occurs on the memory range runs. (Up to a thousands).
 
 Works:
-* everything else.
+* everything else. Report bugs if you find one.

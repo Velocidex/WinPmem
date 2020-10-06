@@ -45,4 +45,4 @@
 #define PCI_CLASS_REVISION      0x08    /* High 24 bits are class, low 8 revision */
 #define PCI_HEADER_TYPE         0x0e    /* 8 bits */
 
-NTSTATUS PCI_AddMemoryRanges(struct PmemMemoryInfo *info, int len);
+NTSTATUS PCI_AddMemoryRanges(PWINPMEM_MEMORY_INFO info, int len);

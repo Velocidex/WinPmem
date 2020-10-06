@@ -1,5 +1,6 @@
 /*
   Copyright 2012 Michael Cohen <scudette@gmail.com>
+  Authors: Viviane Zwanger, Michael Cohen <mike@velocidex.com>
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -16,6 +17,7 @@
 
 #include "kd.h"
 #include "SystemModInfoInvocation.h"
+#include "winpmem.h"
 
 // xxx: returns nt module base address as variatic hex number (SIZE_T).
 //      The perfect routine for PASSIVE_LEVEL drivers.
@@ -69,10 +71,17 @@ SIZE_T KernelGetModuleBaseByPtr()
 		{
 			for (j=0;j<250;j++)
 			{
-				if (((pSystemModuleInformation->Module[i].ImageName[j+0] | 0x20) == 'n') &&
-					((pSystemModuleInformation->Module[i].ImageName[j+1] | 0x20) == 't') &&
-					((pSystemModuleInformation->Module[i].ImageName[j+2] | 0x20) == 'o') &&
-					((pSystemModuleInformation->Module[i].ImageName[j+3] | 0x20) == 's'))
+				// There are so many names for NT kernels: ntoskrnl, ntkrpamp, ...
+				if (
+						((pSystemModuleInformation->Module[i].ImageName[j+0] | 0x20) == 'n') &&
+						((pSystemModuleInformation->Module[i].ImageName[j+1] | 0x20) == 't') &&
+					
+						(((pSystemModuleInformation->Module[i].ImageName[j+2] | 0x20) == 'o') &&
+						((pSystemModuleInformation->Module[i].ImageName[j+3] | 0x20) == 's'))
+						||
+						(((pSystemModuleInformation->Module[i].ImageName[j+2] | 0x20) == 'k') &&
+						((pSystemModuleInformation->Module[i].ImageName[j+3] | 0x20) == 'r'))
+					) // end of nt kernel name check.
 					{
 						imagebase_of_nt = (SIZE_T) pSystemModuleInformation->Module[i].Base;
 						return imagebase_of_nt;
@@ -170,7 +179,7 @@ IMAGE_SECTION_HEADER* GetSection(IMAGE_DOS_HEADER *image_base, char *name)
   Enumerate the KPCR blocks from all CPUs.
 */
 
-void GetKPCR(struct PmemMemoryInfo *info) 
+void GetKPCR(PWINPMEM_MEMORY_INFO info) 
 {
 	// a bitmask of the currently active processors
 	unsigned __int64 active_processors = KeQueryActiveProcessors();
