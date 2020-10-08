@@ -20,10 +20,8 @@
 #include "read.h"
 #include "winpmem.h"
 
-// xxx: 
-// This function's secret unspoken true name is "openPhysMemSectionHandle".
-// It opens a section handle to the physicalMemory device and quicksaves the handle in the device extension for mapViewOfFile usage.
-// It was named MemoryHandle, because we do not need to let everybody know more than that.
+// This opens a section handle to the physicalMemory device and quicksaves 
+// the handle in the device extension for mapViewOfFile usage.
 static int EnsureExtensionHandle(PDEVICE_EXTENSION extension) 
 {
   NTSTATUS NtStatus;
@@ -65,7 +63,7 @@ ULONG PhysicalMemoryPartialRead(IN PDEVICE_EXTENSION extension,
   SIZE_T ViewSize = PAGE_SIZE;
   NTSTATUS NtStatus;
 
-  if (EnsureExtensionHandle(extension)) // xxx: Of course! Totally ensuring the device extension handle. ;-p
+  if (EnsureExtensionHandle(extension)) 
   {
     /* Map page into the Kernel AS */
     NtStatus = ZwMapViewOfSection(extension->MemoryHandle, (HANDLE) -1,
@@ -104,7 +102,7 @@ static ULONG MapIOPagePartialRead(IN PDEVICE_EXTENSION extension,
   mapped_buffer = MmMapIoSpace(ViewBase, PAGE_SIZE, MmCached);  
   // xxx: This will BSOD on HV with a KD attached or return Null if no KD is attached. It can't be helped.
   // xxx: I chose the MmCached because rumor has it that the cached property is more common on RAM-backed memory, and the non-cached property is more common for BARs.
-  //      it's unsafe per definitionem, because this reverse way is not the intended usage.
+  //      it's unsafe per definition, because this reverse way is not the intended usage.
 
 	if (mapped_buffer) 
 	{
@@ -188,11 +186,7 @@ NTSTATUS DeviceRead(IN PDEVICE_EXTENSION extension,
   while (*total_read < howMuchToRead) 
   {
 	current_read_window =  min(PAGE_SIZE, howMuchToRead - *total_read);
-	
-	// Scudette does not maintain an offset to the (toxic) buffer.
-	// Instead he was increasing the buffer address itself. 
-	// We will overtake this behavior for the sake of keeping the 'hacky style' of the original code. ;-p
-	
+		
 	// Allocate an mdl. Must be freed afterwards (if the call succeeds).
 	mdl = IoAllocateMdl(toxic_buffer, current_read_window,  FALSE, TRUE, NULL); // <= toxic buffer address increases each time in the loop.
 	if (!mdl)

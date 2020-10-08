@@ -19,6 +19,7 @@
 #include "winpmem.h"
 #include <time.h>
 
+constexpr auto BUFF_SIZE = (4096 * 4096);
 
 /**
  * Pad file in pad range with zeros.
@@ -27,25 +28,29 @@ __int64 WinPmem::pad(unsigned __int64 length)
 {
 	DWORD bytes_written = 0;
 	BOOL result = FALSE;
-	unsigned char * paddingbuffer = (unsigned char * ) malloc(length);
-
-	ZeroMemory(paddingbuffer, length);
+	unsigned char * paddingbuffer = (unsigned char * ) malloc(BUFF_SIZE);
+	if (!paddingbuffer) {
+		return 0;
+	};
+	ZeroMemory(paddingbuffer, BUFF_SIZE);
 
 	printf("pad\n");
 	printf(" - length: 0x%llx\n", length);
-  
-	result = WriteFile(out_fd_, paddingbuffer , (DWORD) length, &bytes_written, NULL);
-	
+
+	while (length > 0) {
+		DWORD to_write = (DWORD)min((BUFF_SIZE), length);
+		result = WriteFile(out_fd_, paddingbuffer, to_write, &bytes_written, NULL);
+		if ((!(result)) || (bytes_written != to_write))
+		{
+			LogLastError(TEXT("Failed to write padding"));
+			goto error;
+		}
+		out_offset += bytes_written;
+		length -= bytes_written;
+	};
+
 	if (paddingbuffer) free(paddingbuffer);
-
-	if ((!(result)) || (bytes_written != length)) 
-	{
-	  LogLastError(TEXT("Failed to write padding"));
-	  goto error;
-	}
 	
-	out_offset += bytes_written;
-
 	return 1;
 
 	error:
@@ -57,7 +62,7 @@ __int64 WinPmem::copy_memory(unsigned __int64 start, unsigned __int64 end)
 	LARGE_INTEGER large_start;
 	unsigned __int64 count = 0;
 	BOOL result = FALSE;
-	unsigned char * largebuffer = (unsigned char *) malloc(4096 * 4096); // ~ 16 MB
+	unsigned char * largebuffer = (unsigned char *) malloc(BUFF_SIZE); // ~ 16 MB
 
 	if (start > max_physical_memory_)
 	{
@@ -76,7 +81,7 @@ __int64 WinPmem::copy_memory(unsigned __int64 start, unsigned __int64 end)
 
 	while(start < end) 
 	{
-		DWORD to_write = (DWORD) min((4096 * 4096), end - start); // ReadFile wants a DWORD, for whatever reason.
+		DWORD to_write = (DWORD) min((BUFF_SIZE), end - start); // ReadFile wants a DWORD, for whatever reason.
 		DWORD bytes_read = 0;
 		DWORD bytes_written = 0;
 
@@ -117,21 +122,15 @@ __int64 WinPmem::copy_memory(unsigned __int64 start, unsigned __int64 end)
 
 		out_offset += bytes_written;
 		
-		// Scudette can re-enable this if he wants it back.
-
-		// Too much spam if used together with the debug printf output,
-		// and I like the informational output more than the progress output.
 		
 		// === Progress printing ===
 
-		/*
 		if((count % 50) == 0) {
 		  Log(TEXT("\n%02lld%% 0x%08llX "), (start * 100) / max_physical_memory_,
 			  start);
 		}
 
 		Log(TEXT("."));
-		*/
 
 		start += to_write;
 		count ++;
@@ -151,7 +150,7 @@ error:
 // Turn on write support in the driver.
 __int64 WinPmem::set_write_enabled(void) 
 {
-	unsigned _int32 mode;
+	unsigned _int32 mode = 0;
 	DWORD size;
 	BOOL result = FALSE;
 
@@ -292,6 +291,7 @@ __int64 WinPmem::write_raw_image()
 	BOOL result = FALSE;
 	__int64 i;
 	__int64 status = -1;
+	SYSTEMTIME st, lt;
 
 	if(out_fd_==INVALID_HANDLE_VALUE) 
 	{
@@ -314,7 +314,10 @@ __int64 WinPmem::write_raw_image()
 		goto exit;
 	}
 
-	Log(TEXT("Will generate a RAW image\n"));
+
+	GetSystemTime(&st);
+	printf("The system time is: %02d:%02d:%02d\n", st.wHour, st.wMinute, st.wSecond);
+	Log(TEXT("Will generate a RAW image \n"));
 	
 	#ifdef _WIN64
 	printf(" - buffer_size_: 0x%llx\n", buffer_size_);
@@ -358,6 +361,10 @@ __int64 WinPmem::write_raw_image()
 	exit:
 	CloseHandle(out_fd_);
 	out_fd_ = INVALID_HANDLE_VALUE;
+
+	GetSystemTime(&st);
+	printf("The system time is: %02d:%02d:%02d\n", st.wHour, st.wMinute, st.wSecond);
+
 	return status;
 }
 
