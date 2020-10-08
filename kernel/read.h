@@ -25,6 +25,16 @@
 /* Read a page through the PhysicalMemory device. */
 ULONG PhysicalMemoryPartialRead(IN PDEVICE_EXTENSION extension, LARGE_INTEGER offset, unsigned char * buf, ULONG count);
 
+BOOLEAN pmemFastIoRead (
+    __in PFILE_OBJECT FileObject,
+    __in PLARGE_INTEGER BufOffset,
+    __in ULONG BufLen,
+    __in BOOLEAN Wait,
+    __in ULONG LockKey,
+    __out_bcount(BufLen) PVOID toxic_buffer,
+    __out PIO_STATUS_BLOCK IoStatus,
+    __in PDEVICE_OBJECT DeviceObject );
+
 NTSTATUS DeviceRead(	IN PDEVICE_EXTENSION extension, 
 						LARGE_INTEGER offset,
 						unsigned char * toxic_buffer, ULONG howMuchToRead, 
@@ -41,5 +51,15 @@ NTSTATUS PmemRead(IN PDEVICE_OBJECT  DeviceObject, IN PIRP  Irp);
 __drv_dispatchType(IRP_MJ_WRITE) DRIVER_DISPATCH PmemWrite;
 
 NTSTATUS PmemWrite(IN PDEVICE_OBJECT  DeviceObject, IN PIRP  Irp);
+
+#ifdef ALLOC_PRAGMA
+
+#pragma alloc_text( PAGE , PhysicalMemoryPartialRead )
+#pragma alloc_text( PAGE , pmemFastIoRead ) 
+#pragma alloc_text( PAGE , DeviceRead ) 
+#pragma alloc_text( PAGE , PmemRead ) 
+#pragma alloc_text( PAGE , PmemWrite ) 
+
+#endif
 
 #endif

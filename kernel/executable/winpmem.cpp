@@ -116,8 +116,11 @@ __int64 WinPmem::copy_memory(unsigned __int64 start, unsigned __int64 end)
 		//printf(" - bytes_written: 0x%lx\n", bytes_written);
 
 		out_offset += bytes_written;
+		
+		// Scudette can re-enable this if he wants it back.
 
-		// Too much spam if used together with the debug printf output:
+		// Too much spam if used together with the debug printf output,
+		// and I like the informational output more than the progress output.
 		
 		// === Progress printing ===
 
@@ -191,42 +194,28 @@ void WinPmem::print_mode_(unsigned __int32 mode)
 
 
 // Display information about the memory geometry.
-void WinPmem::print_memory_info() 
+// Simply drop a 'care package' info struct (you get that from the driver) into this function to get a nice printout.
+void WinPmem::print_memory_info(PWINPMEM_MEMORY_INFO pinfo) 
 {
-	WINPMEM_MEMORY_INFO info;
 	__int64 i=0;
-	DWORD size;
 	BOOL result = FALSE;
 	
-	result = DeviceIoControl(fd_, IOCTL_GET_INFO, 
-					  NULL, 0, // in
-					  (char *)&info, sizeof(WINPMEM_MEMORY_INFO), // out
-					  &size, NULL);
+	if (!pinfo) return;
 
-	// Get the memory ranges.
-	if (!(result))
+	Log(TEXT("CR3: 0x%010llX\n %d memory ranges:\n"), pinfo->CR3.QuadPart, pinfo->NumberOfRuns);
+
+	for (i=0; i < pinfo->NumberOfRuns.QuadPart; i++) 
 	{
-		LogError(TEXT("Failed to get memory geometry,"));
-		goto error;
-	}
-
-	Log(TEXT("CR3: 0x%010llX\n %d memory ranges:\n"), info.CR3.QuadPart, info.NumberOfRuns);
-
-	for (i=0; i < info.NumberOfRuns.QuadPart; i++) 
-	{
-		Log(TEXT("Start 0x%08llX - Length 0x%08llX\n"), info.Run[i].BaseAddress.QuadPart, info.Run[i].NumberOfBytes.QuadPart);
-		max_physical_memory_ = info.Run[i].BaseAddress.QuadPart + info.Run[i].NumberOfBytes.QuadPart;
+		Log(TEXT("Start 0x%08llX - Length 0x%08llX\n"), pinfo->Run[i].BaseAddress.QuadPart, pinfo->Run[i].NumberOfBytes.QuadPart);
+		max_physical_memory_ = pinfo->Run[i].BaseAddress.QuadPart + pinfo->Run[i].NumberOfBytes.QuadPart;
 	}
 	
 	Log(TEXT("max_physical_memory_ 0x%llx\n"), max_physical_memory_);
-
-	// When using the pci introspection we dont know the maximum physical memory,
-	// we therefore make a guess based on the total ram in the system.
+	
 	Log(TEXT("Acquitision mode "));
 	print_mode_(mode_);
 	Log(TEXT("\n"));
-
-	error:
+	
 	return;
 }
 
@@ -333,7 +322,7 @@ __int64 WinPmem::write_raw_image()
 	printf(" - buffer_size_: 0x%x\n", buffer_size_);
 	#endif
 	
-	print_memory_info();
+	print_memory_info(&info);
 
 
 	// write ranges and pass non ranges

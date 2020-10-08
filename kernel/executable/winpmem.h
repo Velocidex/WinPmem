@@ -23,13 +23,6 @@ static TCHAR version[] = TEXT(PMEM_DRIVER_VERSION) TEXT(" ") TEXT(__DATE__);
 #define WINPMEM_32BIT_DRIVER 105
 
 
-// We use this special section to mark the beginning of the pmem metadata
-// region. Note that the metadata region extends past the end of this physical
-// header - it is guaranteed to be the last section. This allows users to simply
-// add notes by appending them to the end of the file (e.g. with a hex editor).
-// #define PT_PMEM_METADATA (PT_LOOS + 0xd656d70)
-
-
 class WinPmem 
 {
 public:
@@ -42,7 +35,7 @@ public:
 	virtual __int64 set_write_enabled();
 	virtual __int64 set_acquisition_mode(unsigned __int32 mode);
 	virtual void set_driver_filename(TCHAR *driver_filename);
-	virtual void print_memory_info();
+	virtual void print_memory_info(PWINPMEM_MEMORY_INFO pinfo);
 
 	// In order to create an image:
 

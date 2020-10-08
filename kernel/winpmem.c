@@ -28,14 +28,24 @@ SIZE_T ValidKernel = 0xffff000000000000;
 SIZE_T ValidKernel = 0x80000000;
 #endif
 
+DRIVER_UNLOAD IoUnload;
+DRIVER_INITIALIZE DriverEntry;
+NTSTATUS AddMemoryRanges(PWINPMEM_MEMORY_INFO info) ;
+
+#ifdef ALLOC_PRAGMA
+
+#pragma alloc_text( INIT , DriverEntry ) 
+#pragma alloc_text( PAGE , IoUnload ) 
+#pragma alloc_text( PAGE , AddMemoryRanges ) 
+
+#endif
+
 
 // The following globals are populated in the kernel context from DriverEntry
 // and reported to the user context.
 
 // The kernel CR3
 LARGE_INTEGER CR3;  // Floating global.
-
-DRIVER_UNLOAD IoUnload;
 
 VOID IoUnload(IN PDRIVER_OBJECT DriverObject) 
 {
@@ -62,6 +72,11 @@ VOID IoUnload(IN PDRIVER_OBJECT DriverObject)
 		if ((SIZE_T) (ext->pte_mmapper) > ValidKernel)
 		{
 		  pte_mmap_windows_delete(ext->pte_mmapper);
+		}
+		
+		if ((SIZE_T) (DriverObject->FastIoDispatch) > ValidKernel) 
+		{
+			ExFreePool(DriverObject->FastIoDispatch);
 		}
 
 		IoDeleteDevice(pDeviceObject);
@@ -114,8 +129,6 @@ __drv_dispatchType(IRP_MJ_CREATE) DRIVER_DISPATCH wddCreate;
 
 NTSTATUS wddCreate(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp) 
 {
-//  PDEVICE_EXTENSION ext=(PDEVICE_EXTENSION)DeviceObject->DeviceExtension;
-  //PIO_STACK_LOCATION IrpStack = IoGetCurrentIrpStackLocation(Irp);
   if (!DeviceObject || !Irp) 
   {
 	return STATUS_INVALID_PARAMETER;
@@ -125,24 +138,24 @@ NTSTATUS wddCreate(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
   IoCompleteRequest(Irp,IO_NO_INCREMENT);
   return STATUS_SUCCESS;
-};
+}
 
 
 __drv_dispatchType(IRP_MJ_CLOSE) DRIVER_DISPATCH wddClose;
 
 NTSTATUS wddClose(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp) 
 {
-  PDEVICE_EXTENSION ext=(PDEVICE_EXTENSION)DeviceObject->DeviceExtension;
-//  PIO_STACK_LOCATION IrpStack = IoGetCurrentIrpStackLocation(Irp);
+  PDEVICE_EXTENSION ext = (PDEVICE_EXTENSION) DeviceObject->DeviceExtension;
+  
   if (!DeviceObject || !Irp) 
   {
 		return STATUS_INVALID_PARAMETER;
   }
-  if(ext->MemoryHandle != 0) 
+  if (ext->MemoryHandle != 0) 
   {
     ZwClose(ext->MemoryHandle);
     ext->MemoryHandle = 0;
-  };
+  }
 
   Irp->IoStatus.Status = STATUS_SUCCESS;
   Irp->IoStatus.Information = 0;
@@ -185,7 +198,6 @@ NTSTATUS wddDispatchDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
   inBuffer = IrpStack->Parameters.DeviceIoControl.Type3InputBuffer;
   outBuffer = Irp->UserBuffer;
-  // IoBuffer = Irp->AssociatedIrp.SystemBuffer;
   
   
   OutputLen = IrpStack->Parameters.DeviceIoControl.OutputBufferLength;
@@ -201,7 +213,7 @@ NTSTATUS wddDispatchDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	
 	if (!(outBuffer))
 	{
-		DbgPrint("Error: outuffer invalid in device io dispatch.\n");
+		DbgPrint("Error: outbuffer invalid in device io dispatch.\n");
 		status = STATUS_INVALID_PARAMETER;
 		goto exit;
 	}
@@ -268,7 +280,7 @@ NTSTATUS wddDispatchDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
   {
     WinDbgPrint("Setting Acquisition mode.\n");
 	
-	if ((!(inBuffer)) || (InputLen < sizeof(u32))) // are you really sure an enum is a u32?
+	if ((!(inBuffer)) || (InputLen < sizeof(u32)))
 	{
 		DbgPrint("InBuffer in device io dispatch was invalid.\n");
 		status = STATUS_INFO_LENGTH_MISMATCH;
@@ -333,7 +345,7 @@ NTSTATUS wddDispatchDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
   case IOCTL_WRITE_ENABLE: 
   {
 	
-	// xxx: thanfully for me, we do not access any in/out buffers here.
+	// xxx: thankfully for me, we do not access any in/out buffers here.
     ext->WriteEnabled = !ext->WriteEnabled;
     WinDbgPrint("Write mode is %d. Do you know what you are doing?\n", ext->WriteEnabled);
     status = STATUS_SUCCESS;
@@ -357,119 +369,124 @@ NTSTATUS wddDispatchDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
 
 
-DRIVER_INITIALIZE DriverEntry;
-
 NTSTATUS DriverEntry (IN PDRIVER_OBJECT DriverObject,
                       IN PUNICODE_STRING RegistryPath)
 {
-  UNICODE_STRING DeviceName, DeviceLink;
-  NTSTATUS NtStatus;
-  PDEVICE_OBJECT DeviceObject = NULL;
-  PDEVICE_EXTENSION extension;
-  
-  UNREFERENCED_PARAMETER(RegistryPath);
+	UNICODE_STRING DeviceName, DeviceLink;
+	NTSTATUS NtStatus;
+	PDEVICE_OBJECT DeviceObject = NULL;
+	PDEVICE_EXTENSION extension;
+    ULONG FastioTag = 0x54505346; 
 
-  WinDbgPrint("WinPMEM - " PMEM_DRIVER_VERSION " \n");
+	UNREFERENCED_PARAMETER(RegistryPath);
 
-#if PMEM_WRITE_ENABLED == 1
-  WinDbgPrint("WinPMEM write support available!\n");
-#endif
+	WinDbgPrint("WinPMEM - " PMEM_DRIVER_VERSION " \n");
 
-  RtlInitUnicodeString (&DeviceName, L"\\Device\\" PMEM_DEVICE_NAME);
+	#if PMEM_WRITE_ENABLED == 1
+	WinDbgPrint("WinPMEM write support available!\n");
+	#endif
 
-  // We create our secure device.
-  // http://msdn.microsoft.com/en-us/library/aa490540.aspx
-  NtStatus = IoCreateDeviceSecure(DriverObject,
-                                  sizeof(DEVICE_EXTENSION),
-                                  &DeviceName,
-                                  FILE_DEVICE_UNKNOWN,
-                                  FILE_DEVICE_SECURE_OPEN,
-                                  FALSE,
-                                  &SDDL_DEVOBJ_SYS_ALL_ADM_ALL,
-                                  &GUID_DEVCLASS_PMEM_DUMPER,
-                                  &DeviceObject);
+	RtlInitUnicodeString (&DeviceName, L"\\Device\\" PMEM_DEVICE_NAME);
 
-  if (!NT_SUCCESS(NtStatus)) 
-  {
-    WinDbgPrint ("IoCreateDevice failed. => %08X\n", NtStatus);
-    return NtStatus;
-  }
+	// We create our secure device.
+	// http://msdn.microsoft.com/en-us/library/aa490540.aspx
+	NtStatus = IoCreateDeviceSecure(DriverObject,
+								  sizeof(DEVICE_EXTENSION),
+								  &DeviceName,
+								  FILE_DEVICE_UNKNOWN,
+								  FILE_DEVICE_SECURE_OPEN,
+								  FALSE,
+								  &SDDL_DEVOBJ_SYS_ALL_ADM_ALL,
+								  &GUID_DEVCLASS_PMEM_DUMPER,
+								  &DeviceObject);
 
-  DriverObject->MajorFunction[IRP_MJ_CREATE] = wddCreate;
-  DriverObject->MajorFunction[IRP_MJ_CLOSE] = wddClose;
-  DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = wddDispatchDeviceControl;
-  DriverObject->MajorFunction[IRP_MJ_READ] = PmemRead; // xxx: this is a function that copies tons of data, in the range of Gigabytes.
-                                                       //      therefore using NEITHER I/O.
+	if (!NT_SUCCESS(NtStatus)) 
+	{
+	WinDbgPrint ("IoCreateDevice failed. => %08X\n", NtStatus);
+	return NtStatus;
+	}
 
-#if PMEM_WRITE_ENABLED == 1
-  {
-    // Make sure that the drivers with write support are clearly marked as such.
-    static char TAG[] = "Write Supported";
-  }
+	DriverObject->MajorFunction[IRP_MJ_CREATE] = wddCreate;
+	DriverObject->MajorFunction[IRP_MJ_CLOSE] = wddClose;
+	DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = wddDispatchDeviceControl;
+	DriverObject->MajorFunction[IRP_MJ_READ] = PmemRead; // copies tons of data, always in the range of Gigabytes.
+													   
+	DriverObject->FastIoDispatch = ExAllocatePoolWithTag(NonPagedPool, sizeof(FAST_IO_DISPATCH), FastioTag);
+	
+	if (NULL == DriverObject->FastIoDispatch)
+	{
+		DbgPrint("Error: Fast I/O table allocation failed!\n\n");
+		NtStatus = STATUS_INSUFFICIENT_RESOURCES;
+		goto error;
+	}
+	
+	RtlZeroMemory(DriverObject->FastIoDispatch, sizeof(FAST_IO_DISPATCH));
+	DriverObject->FastIoDispatch->SizeOfFastIoDispatch = sizeof(FAST_IO_DISPATCH);
+	DriverObject->FastIoDispatch->FastIoRead = pmemFastIoRead;
+	
 
-  // Support writing.
-  DriverObject->MajorFunction[IRP_MJ_WRITE] = PmemWrite;
-  
-#endif
+	#if PMEM_WRITE_ENABLED == 1
+	{
+	// Make sure that the drivers with write support are clearly marked as such.
+	static char TAG[] = "Write Supported";
+	}
+
+	// Support writing.
+	DriverObject->MajorFunction[IRP_MJ_WRITE] = PmemWrite;
+
+	#endif
 
 	DriverObject->DriverUnload = IoUnload;
 	
-	// We need to set NEITHER, because otherwise for read/write requests the I/O manager cannot know where we except the usermode buffer.
 	DeviceObject->Flags &= ~DO_DIRECT_IO;
 	DeviceObject->Flags &= ~DO_BUFFERED_IO;
-	
-  // SetFlag(DeviceObject->Flags, DO_BUFFERED_IO ); // xxx: we will still do BUFFERED I/O for GET_INFO, SET_MODE, and WRITE_ENABLE, 
-													// as they do not represent large amounts of data.
-  
+
 	DeviceObject->Flags &= ~DO_DEVICE_INITIALIZING; // xxx: I/O manager will do that anyway because it's in the driver entry.
 
-  RtlInitUnicodeString (&DeviceLink, L"\\??\\" PMEM_DEVICE_NAME);
+	RtlInitUnicodeString (&DeviceLink, L"\\??\\" PMEM_DEVICE_NAME);
 
-  NtStatus = IoCreateSymbolicLink (&DeviceLink, &DeviceName);
-  
-  if (!NT_SUCCESS(NtStatus)) 
-  {
-	  // xxx: Don't do that:!! It didn't work out so it's not freeable.
-	  // IoDeleteSymbolicLink(&DeviceLink);
-	  
+	NtStatus = IoCreateSymbolicLink (&DeviceLink, &DeviceName);
+
+	if (!NT_SUCCESS(NtStatus)) 
+	{
 	  WinDbgPrint("IoCreateSymbolicLink failed. => %08X\n", NtStatus);
-	  // IoDeleteDevice(DeviceObject); // xxx: Don't do that!! The unload routine will take care of that already.
+	  // The unload routine will take care of deleting things and we should not double free things.
 	  goto error;
-  }
+	}
 
-  // Populate globals in kernel context.
-  // Used when virtual addressing is enabled, hence when the PG bit is set in CR0. 
-  // CR3 enables the processor to translate linear addresses into physical addresses by locating the page directory and page tables for the current task. 
-  // Typically, the upper 20 bits of CR3 become the page directory base register (PDBR), which stores the physical address of the first page directory entry. 
-  // If the PCIDE bit in CR4 is set, the lowest 12 bits are used for the process-context identifier (PCID)
-  CR3.QuadPart = __readcr3();
+	// Populate globals in kernel context.
+	// Used when virtual addressing is enabled, hence when the PG bit is set in CR0. 
+	// CR3 enables the processor to translate linear addresses into physical addresses by locating the page directory and page tables for the current task. 
+	// Typically, the upper 20 bits of CR3 become the page directory base register (PDBR), which stores the physical address of the first page directory entry. 
+	// If the PCIDE bit in CR4 is set, the lowest 12 bits are used for the process-context identifier (PCID)
+	CR3.QuadPart = __readcr3();
 
-  // Initialize the device extension with safe defaults.
-  extension = DeviceObject->DeviceExtension;
-  extension->mode = PMEM_MODE_PHYSICAL;
-  extension->MemoryHandle = 0;
+	// Initialize the device extension with safe defaults.
+	extension = DeviceObject->DeviceExtension;
+	extension->mode = PMEM_MODE_PHYSICAL;
+	extension->MemoryHandle = 0;
 
-#if defined(_WIN64)
-  // Disable pte mapping for 32 bit systems.
-  extension->pte_mmapper = pte_mmap_windows_new();
-  
-  if (extension->pte_mmapper == NULL) 
-  {
-	  // IoDeleteDevice(DeviceObject); // WTF?
+	#if defined(_WIN64)
+	// Disable pte mapping for 32 bit systems.
+	extension->pte_mmapper = pte_mmap_windows_new();
+
+	if (extension->pte_mmapper == NULL) 
+	{
+	  // The unload routine will take care of deleting things and we should not double free things.
 	  goto error;
-  }
-  extension->pte_mmapper->loglevel = PTE_ERR;
-  
-  // extension->mode = PMEM_MODE_PTE;
-#else
-  extension->pte_mmapper = NULL;
-#endif
+	}
+	extension->pte_mmapper->loglevel = PTE_ERR;
 
-  ExInitializeFastMutex(&extension->mu);
+	// extension->mode = PMEM_MODE_PTE;
+	#else
+	extension->pte_mmapper = NULL;
+	#endif
 
-  WinDbgPrint("Driver initialization completed.\n");
-  return NtStatus;
+	ExInitializeFastMutex(&extension->mu);
 
- error:
-  return STATUS_UNSUCCESSFUL;
+	WinDbgPrint("Driver initialization completed.\n");
+	return NtStatus;
+
+	error:
+	return STATUS_UNSUCCESSFUL;
 }

@@ -44,8 +44,9 @@ static int EnsureExtensionHandle(PDEVICE_EXTENSION extension)
     NtStatus = ZwOpenSection(&extension->MemoryHandle,
                              SECTION_MAP_READ, &MemoryAttributes);
 
-    if (!NT_SUCCESS(NtStatus)) {
-      WinDbgPrint("Failed ZwOpenSection(MemoryHandle) => %08X\n", NtStatus);
+    if (!NT_SUCCESS(NtStatus)) 
+	{
+      DbgPrint("Failed ZwOpenSection(MemoryHandle) => %08X\n", NtStatus);
       return 0;
     }
   }
@@ -76,7 +77,7 @@ ULONG PhysicalMemoryPartialRead(IN PDEVICE_EXTENSION extension,
       ZwUnmapViewOfSection((HANDLE)-1, mapped_buffer);
 
     } else {
-      WinDbgPrint("Failed to Map page at 0x%llX\n", offset.QuadPart);
+      DbgPrint("Failed to Map page at 0x%llX\n", offset.QuadPart);
       RtlZeroMemory(buf, to_read);
     };
   };
@@ -114,7 +115,7 @@ static ULONG MapIOPagePartialRead(IN PDEVICE_EXTENSION extension,
 		} 
 		except(EXCEPTION_EXECUTE_HANDLER) 
 		{
-		  WinDbgPrintDebug("Unable to read %d bytes from %p for %p\n", to_read, source, offset.QuadPart - page_offset);
+		  DbgPrint("Unable to read %d bytes from %p.\n", to_read, mapped_buffer+page_offset);
 		  MmUnmapIoSpace(mapped_buffer, PAGE_SIZE);
 		  return 0;
 		}
@@ -156,7 +157,7 @@ static ULONG PTEMmapPartialRead(IN PDEVICE_EXTENSION extension,
 	  result = to_read;
 
     } except(EXCEPTION_EXECUTE_HANDLER) {
-      WinDbgPrintDebug("Unable to read %d bytes from %p for %p\n", to_read, source, offset.QuadPart - page_offset);
+      DbgPrint("Unable to read %d bytes from %p for %p\n", to_read, source, offset.QuadPart - page_offset);
 	}
   }
   // Failed to map page, or an exception occured - error out.
@@ -206,7 +207,7 @@ NTSTATUS DeviceRead(IN PDEVICE_EXTENSION extension,
 	except(EXCEPTION_EXECUTE_HANDLER)
 	{
 
-		DbgPrint("Exception while probe-writing and locking NEITHER I/O buffer 0x%08x.\n", status);
+		DbgPrint("Exception while locking I/O buffer 0x%08x.\n", status);
 		status = GetExceptionCode();
 		IoFreeMdl(mdl);
 		goto end;
@@ -250,10 +251,133 @@ end:
 }
 
 
+// FAST I/O read
+
+BOOLEAN pmemFastIoRead (
+    __in PFILE_OBJECT FileObject,
+    __in PLARGE_INTEGER BufOffset,
+    __in ULONG BufLen,
+    __in BOOLEAN Wait,
+    __in ULONG LockKey,
+    __out_bcount(BufLen) PVOID toxic_buffer,
+    __out PIO_STATUS_BLOCK IoStatus,
+    __in PDEVICE_OBJECT DeviceObject )
+{
+	PDEVICE_EXTENSION extension;
+	ULONG total_read = 0;
+	NTSTATUS status = STATUS_SUCCESS;
+	SIZE_T buffer_address = (SIZE_T) toxic_buffer;
+	
+	UNREFERENCED_PARAMETER(FileObject);
+	UNREFERENCED_PARAMETER(Wait);
+	UNREFERENCED_PARAMETER(LockKey);
+
+	PAGED_CODE();
+	
+	extension = DeviceObject->DeviceExtension;
+	
+	if(KeGetCurrentIrql() != PASSIVE_LEVEL) // Does not happen.
+	{
+		status = STATUS_SUCCESS;
+		goto bail_out;
+	}
+	
+	// DbgPrint("pmemFastIoReadn");
+	
+	
+	// Do security checkings now. 
+	// The usermode program is not allowed to order more than ONE PAGE_SIZE at a time.
+	// But the arbitrary read/write allows up to 1-PAGESIZE bytes. So...
+	
+	if (!(toxic_buffer))
+	{
+		status = STATUS_INVALID_PARAMETER;
+		DbgPrint("Error in pmemFastIoRead: 0x%08x, Bad/nonexisting NULL buffer.\n", status);
+		goto bail_out;
+	}
+	
+	// xxx: Those usermode programs should disturb us only with serious requests. We are a busy driver.
+	
+	if (!(BufLen))
+	{
+		status = STATUS_INVALID_PARAMETER;
+		DbgPrint("Error in  in pmemFastIoRead: the caller  wants to read less than one byte.\n");
+		goto bail_out;
+	}
+	
+	// xxx: might look into ntstatus.h for nicer NTSTATUS codes.
+	
+	// 'Probe' if the usermode program spoke the truth.
+	try 
+    {
+		if (BufLen <= (PAGE_SIZE * 4))
+		{
+			ProbeForWrite( toxic_buffer, BufLen, 1 ); 
+		}
+		else
+		{
+			// I poke the large buffer in the middle, front and back. ;-)
+			ProbeForWrite( toxic_buffer, PAGE_SIZE, 1 );
+			ProbeForWrite( (void *) (buffer_address + (BufLen>>1) - PAGE_SIZE), PAGE_SIZE, 1 );
+			ProbeForWrite( (void *) (buffer_address + BufLen - PAGE_SIZE) , PAGE_SIZE, 1 );
+		}
+		// ProbeForWrite( toxic_buffer, BufLen, 1 ); 
+	}
+	except(EXCEPTION_EXECUTE_HANDLER)
+	{
+		status = GetExceptionCode();
+		DbgPrint("Error: 0x%08x, write-probe in pmemFastIoRead. Bad/nonexisting buffer.\n", status);
+		// Of course now we don't continue. 
+		goto bail_out;
+	}
+	
+	// All things considered, the buffer looked good, of right size, and was accessible for write.
+	// It's accepted for the next stage. Don't touch, it's still considered poisonous.
+
+	//DbgPrint("PmemRead\n");
+	//DbgPrint(" - BufLen: 0x%x\r\n", BufLen);
+	//DbgPrint(" - BufOffset: 0x%llx\r\n", BufOffset.QuadPart);
+
+	if ((extension->mode) == PMEM_MODE_PHYSICAL)
+	{
+		status = DeviceRead(extension, *BufOffset, toxic_buffer, BufLen, &total_read, PhysicalMemoryPartialRead);
+	}
+	else if ((extension->mode) == PMEM_MODE_IOSPACE)
+	{
+		status = DeviceRead(extension, *BufOffset, toxic_buffer, BufLen, &total_read, MapIOPagePartialRead);
+	}
+	else if ((extension->mode) == PMEM_MODE_PTE)
+	{
+		status = DeviceRead(extension, *BufOffset, toxic_buffer, BufLen, &total_read, PTEMmapPartialRead);
+	}
+	else
+	{
+		DbgPrint("This acquisition mode is not supported!\n");
+		IoStatus->Status = STATUS_NOT_IMPLEMENTED;
+		IoStatus->Information = 0;
+		return TRUE;
+	}
+	
+	// DbgPrint("Fast I/O read status on return: %08x.\n",status);
+	
+	IoStatus->Status = status;
+	IoStatus->Information = total_read;
+	return TRUE;
+	
+	bail_out:
+	
+	IoStatus->Status = status;
+	IoStatus->Information = 0;
+	return FALSE;
+	
+}
+
+
 
 NTSTATUS PmemRead(IN PDEVICE_OBJECT  DeviceObject, IN PIRP  Irp) 
 {
 	PVOID toxic_buffer;       // Buffer provided by user space. Don't touch it. 
+	SIZE_T buffer_address;
 	ULONG BufLen;    //Buffer length for user provided buffer.
 	LARGE_INTEGER BufOffset; // The file offset requested from userspace.
 	PIO_STACK_LOCATION pIoStackIrp;
@@ -262,12 +386,8 @@ NTSTATUS PmemRead(IN PDEVICE_OBJECT  DeviceObject, IN PIRP  Irp)
 	ULONG total_read = 0;
 
 	PAGED_CODE();
-
-	// xxx: no way this could possibly run on irql in this driver. 
-	// On second thought, there might be a malicious driver trying to kill winpmem 
-	// with a created IRP of IRQL > 0 (paranoid, I know). In this case ...
 	
-	if(KeGetCurrentIrql() != PASSIVE_LEVEL) 
+	if(KeGetCurrentIrql() != PASSIVE_LEVEL) // Does not happen.
 	{
 		status = STATUS_SUCCESS;
 		goto exit;
@@ -283,7 +403,6 @@ NTSTATUS PmemRead(IN PDEVICE_OBJECT  DeviceObject, IN PIRP  Irp)
 	
 	// xxx:
 	// maybe it's even a kernel driver or rootkit calling us for help.
-	// As long as it's coming on irql 0, we will gladly help out.
 	// I will be referring to it mostly as the "usermode program", but also keep in mind it could be a kernelmode system thread.
 	
 	// Do security checkings now. 
@@ -309,10 +428,23 @@ NTSTATUS PmemRead(IN PDEVICE_OBJECT  DeviceObject, IN PIRP  Irp)
 	
 	// xxx: might look into ntstatus.h for nicer NTSTATUS codes.
 	
-	// Check if the usermode program spoke the truth.
+	// 'Probe' if the usermode program spoke the truth.
 	try 
     {
-		ProbeForWrite( toxic_buffer, BufLen, 1 ); 
+		buffer_address = (SIZE_T) toxic_buffer; 
+		
+		if (BufLen <= (PAGE_SIZE * 4))
+		{
+			ProbeForWrite( toxic_buffer, BufLen, 1 ); 
+		}
+		else
+		{
+			// I poke the large buffer in the middle, front and back. ;-)
+			ProbeForWrite( toxic_buffer, PAGE_SIZE, 1 );
+			ProbeForWrite( (void *) (buffer_address + (BufLen>>1) - PAGE_SIZE), PAGE_SIZE, 1 );
+			ProbeForWrite( (void *) (buffer_address + BufLen - PAGE_SIZE) , PAGE_SIZE, 1 );
+		}
+		// ProbeForWrite( toxic_buffer, BufLen, 1 );
 	}
 	except(EXCEPTION_EXECUTE_HANDLER)
 	{
@@ -350,6 +482,11 @@ NTSTATUS PmemRead(IN PDEVICE_OBJECT  DeviceObject, IN PIRP  Irp)
 		status = STATUS_NOT_IMPLEMENTED;
 		BufLen = 0;
 	}
+	
+	if (status == STATUS_SUCCESS)
+	{
+		pIoStackIrp->FileObject->PrivateCacheMap = (PVOID) -1;
+	}
 
 	exit:
 	Irp->IoStatus.Status = status;
@@ -361,9 +498,8 @@ NTSTATUS PmemRead(IN PDEVICE_OBJECT  DeviceObject, IN PIRP  Irp)
 
 #if PMEM_WRITE_ENABLED == 1
 
-// TODO: securing for large writes.
-// WARNING: not fully secured yet! Writing more than a PAGE can fail!
-// That's why I limited it to PAGE_SIZE. Until I finish with that, you are safe, but restricted. (relatively spoken)
+// TODO: allowing large write window sizes.
+// NOTE: I limited it to PAGE_SIZE. It's safe, but restricted. (relatively spoken)
 
 NTSTATUS PmemWrite(IN PDEVICE_OBJECT  DeviceObject, IN PIRP  Irp) 
 {
@@ -379,11 +515,7 @@ NTSTATUS PmemWrite(IN PDEVICE_OBJECT  DeviceObject, IN PIRP  Irp)
 	LARGE_INTEGER offset;
 
 	PAGED_CODE();
-
-	// xxx: no way this could possibly run on irql in this driver. 
-	// On second thought, there might be a malicious driver trying to kill winpmem 
-	// with a created IRP of IRQL > 0 (paranoid, I know). In this case ...
-
+	
 	if (KeGetCurrentIrql() != PASSIVE_LEVEL) 
 	{
 		status = STATUS_SUCCESS;
@@ -408,7 +540,6 @@ NTSTATUS PmemWrite(IN PDEVICE_OBJECT  DeviceObject, IN PIRP  Irp)
 	BufOffset = pIoStackIrp->Parameters.Write.ByteOffset;
 	
 	toxic_buffer = pIoStackIrp->Parameters.DeviceIoControl.Type3InputBuffer;
-	// Buf = (PCHAR)(Irp->AssociatedIrp.SystemBuffer);
 	
 	// xxx: hope the caller knows what he's doing here. That's an arbitrary read to anywhere from usermode.
 	// Maybe we should insert some kind of quick puzzle to ensure the caller is sane.
@@ -424,10 +555,8 @@ NTSTATUS PmemWrite(IN PDEVICE_OBJECT  DeviceObject, IN PIRP  Irp)
 	
 	if (BufLen > PAGE_SIZE)
 	{
-		DbgPrint("Complain: the caller wants to write more than a PAGE_SIZE!\n");
-		// xxx: We cannot clamp it to PAGE_SIZE, that might lead to corrupt data for the usermode program.
-		// Better directly reject this request then. 
-		// What would be good? "Not implemented"?
+		DbgPrint("Currently not implemented: the caller wants to write more than a PAGE_SIZE!\n");
+		// Currently: 
 		status = STATUS_NOT_IMPLEMENTED;
 		goto exit;
 	}
@@ -437,8 +566,7 @@ NTSTATUS PmemWrite(IN PDEVICE_OBJECT  DeviceObject, IN PIRP  Irp)
 	if (!(BufLen))
 	{
 		DbgPrint("Complain: the caller  wants to write less than one byte.\n");
-		// xxx: What would be good? "Not implemented"?
-		status = STATUS_NOT_IMPLEMENTED;
+		status = STATUS_INVALID_PARAMETER;
 		goto exit;
 	}
 	
@@ -447,9 +575,8 @@ NTSTATUS PmemWrite(IN PDEVICE_OBJECT  DeviceObject, IN PIRP  Irp)
 	// Now check if the usermode program spoke the truth.
 	try 
     {
-		// xxx: jep. that's a read from our point of view, though we are implementing a WriteFile.
-		ProbeForRead( toxic_buffer, BufLen, 1 ); // xxx: If we would drop the arbitrary read/write primitive from usermode, 
-		// we could put something else then 1 here.
+		// xxx: jep. that's a read from our point of view, though we are implementing a 'WriteFile'.
+		ProbeForRead( toxic_buffer, BufLen, 1 ); 
 	}
 	except(EXCEPTION_EXECUTE_HANDLER)
 	{
@@ -464,7 +591,7 @@ NTSTATUS PmemWrite(IN PDEVICE_OBJECT  DeviceObject, IN PIRP  Irp)
 	
 	// xxx: All things considered, the buffer looked good, of right size, and was accessible for reading.
 	
-	// We will use it to write #somewhere# #something# given by #somebody#. Incredible. I like the 'solve puzzle first' idea.
+	// We will use it to write #somewhere# #something# given by #somebody#. This is what one calls "dangerous".
 
 	page_offset = BufOffset.QuadPart % PAGE_SIZE;
 	offset.QuadPart = BufOffset.QuadPart - page_offset;  // Page aligned.
@@ -475,7 +602,7 @@ NTSTATUS PmemWrite(IN PDEVICE_OBJECT  DeviceObject, IN PIRP  Irp)
 
 	/* Map memory into the Kernel AS */
 	if (EnsureExtensionHandle(extension)) // xxx: totally ensuring the device extension handle. *nods*
-	{   								  // xxx: I like that we use this method for the arbitrary write, it's the most safest (and slowest).
+	{ 
 		status = ZwMapViewOfSection(extension->MemoryHandle, (HANDLE) -1,
 				&mapped_buffer, 0L, PAGE_SIZE, &offset,
 				&ViewSize, ViewUnmap, 0, PAGE_READWRITE);

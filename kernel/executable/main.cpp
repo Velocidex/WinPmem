@@ -172,8 +172,6 @@ int _tmain(int argc, _TCHAR* argv[])
 			{
                 pmem_handle->set_write_enabled();
             }
-
-            pmem_handle->print_memory_info();
         }
 
     }
