@@ -22,8 +22,8 @@
     <ProjectGuid>{92B22A86-E34F-438A-AEC5-5D7B0D56C13E}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
     <RootNamespace>winpmem</RootNamespace>
-	<Configuration Condition="'$(Configuration)' == ''">Debug</Configuration>
-	<Platform Condition="'$(Platform)' == ''">x64</Platform>
+    <Configuration Condition="'$(Configuration)' == ''">Debug</Configuration>
+    <Platform Condition="'$(Platform)' == ''">x64</Platform>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
@@ -89,7 +89,7 @@
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -128,11 +128,12 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
-      <PrecompiledHeader></PrecompiledHeader>
+      <PrecompiledHeader>
+      </PrecompiledHeader>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -148,7 +149,8 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
-      <PrecompiledHeader></PrecompiledHeader>
+      <PrecompiledHeader>
+      </PrecompiledHeader>
       <Optimization>MaxSpeed</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
@@ -168,6 +170,11 @@
       -->
     </Link>
   </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+    </ClCompile>
+  </ItemDefinitionGroup>
   <ItemGroup>
     <None Include="ReadMe.txt" />
   </ItemGroup>
@@ -185,16 +192,15 @@
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
-
-	<Target Name="DisplayMessages" AfterTargets="Build">
-		<Message Text="PlatformToolset = $(PlatformToolset)" />
-		<Message Text="Project Name = $(MSBuildProjectName)" />
-		<Message Text="Project File Name = $(MSBuildProjectFile)" />
-		<Message Text="ConfigurationType = $(ConfigurationType)" />
-		<Message Text="Configuration = $(Configuration)" />
-		<Message Text="Platform = $(Platform)" />
-		<Message Text="IntDir = $(IntDir)" />
-		<Message Text="OutDir = $(OutDir)" />
-		<Message Text="TargetPath = $(TargetPath)" />
-	</Target>
+  <Target Name="DisplayMessages" AfterTargets="Build">
+    <Message Text="PlatformToolset = $(PlatformToolset)" />
+    <Message Text="Project Name = $(MSBuildProjectName)" />
+    <Message Text="Project File Name = $(MSBuildProjectFile)" />
+    <Message Text="ConfigurationType = $(ConfigurationType)" />
+    <Message Text="Configuration = $(Configuration)" />
+    <Message Text="Platform = $(Platform)" />
+    <Message Text="IntDir = $(IntDir)" />
+    <Message Text="OutDir = $(OutDir)" />
+    <Message Text="TargetPath = $(TargetPath)" />
+  </Target>
 </Project>
