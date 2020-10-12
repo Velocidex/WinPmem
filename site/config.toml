@@ -19,7 +19,7 @@ pygmentsUseClasses = true
 
 [[menu.main]]
     name = "Github"
-    url = "https://github.com/Velocidex/c-aff4"
+    url = "https://github.com/Velocidex/WinPmem"
     weight = 3
 
 [params]
@@ -27,10 +27,9 @@ pygmentsUseClasses = true
     meta_description = "WinPmem memory imager."
     meta_og_title = "WinPmem memory imager"
     meta_og_type = "website"
-    meta_og_url = "https://github.com/Velocidex/c-aff4"
-    meta_og_image = "http://www.aff4.org/img/AFF4.png"
+    meta_og_url = "https://github.com/Velocidex/WinPmem"
     meta_og_description = "The WinPmem suite of memory acquisition tools support Windows, macOS and Linux."
 
   [params.logo]
-      mobile = "http://www.aff4.org/img/AFF4.png"
-      standard  = "http://www.aff4.org/img/AFF4.png"
+      mobile = "https://avatars1.githubusercontent.com/u/36671444?s=200"
+      standard  =  "https://avatars1.githubusercontent.com/u/36671444?s=200"
