@@ -1,6 +1,6 @@
 ---
 title: "Inspecting AFF4 volumes"
-draft: false
+draft: true
 weight: 4
 ---
 
