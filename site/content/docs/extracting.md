@@ -1,6 +1,6 @@
 ---
 title: "Extracting streams from AFF4 volumes"
-draft: false
+draft: true
 weight: 5
 ---
 

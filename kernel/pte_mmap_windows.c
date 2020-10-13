@@ -91,11 +91,7 @@ static void pte_free_rogue_page(void * page)
 static void *pte_phys_to_virt(PHYS_ADDR address) 
 {
   PHYSICAL_ADDRESS phys_address;
-
   phys_address.QuadPart = address;
-  //return phys_to_virt(address);
-  // TODO(scudette): Use PFNDB here.
-  // Disagree, don't hear on him!
   return MmGetVirtualForPhysical(phys_address);
 }
 

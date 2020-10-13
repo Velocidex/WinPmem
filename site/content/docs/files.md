@@ -1,6 +1,6 @@
 ---
 title: "Acquiring Files"
-draft: false
+draft: true
 weight: 3
 ---
 

@@ -1,6 +1,6 @@
 ---
 title: "Acquiring Memory"
-draft: false
+draft: true
 weight: 2
 ---
 
