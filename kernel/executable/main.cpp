@@ -82,7 +82,7 @@ WinPmem* WinPmemFactory()
 int _tmain(int argc, _TCHAR* argv[]) 
 {
     __int64 i, status;
-    unsigned __int32 mode = PMEM_MODE_PHYSICAL;
+    unsigned __int32 mode = PMEM_MODE_PTE;
     __int64 write_mode = 0;
     __int64 only_load_driver = 0;
     __int64 only_unload_driver = 0;
