@@ -27,8 +27,11 @@ constexpr auto BUFF_SIZE = (4096 * 4096);
 __int64 WinPmem::pad(unsigned __int64 length) 
 {
 	DWORD bytes_written = 0;
+	DWORD to_write;
 	BOOL result = FALSE;
 	unsigned char * paddingbuffer = (unsigned char * ) malloc(BUFF_SIZE);
+	
+	
 	if (!paddingbuffer) {
 		return 0;
 	};
@@ -37,9 +40,12 @@ __int64 WinPmem::pad(unsigned __int64 length)
 	printf("pad\n");
 	printf(" - length: 0x%llx\n", length);
 
-	while (length > 0) {
-		DWORD to_write = (DWORD)min((BUFF_SIZE), length);
+	while (length > 0) 
+	{
+		to_write = (DWORD)min((BUFF_SIZE), length);
+		
 		result = WriteFile(out_fd_, paddingbuffer, to_write, &bytes_written, NULL);
+		
 		if ((!(result)) || (bytes_written != to_write))
 		{
 			LogLastError(TEXT("Failed to write padding"));
@@ -47,7 +53,7 @@ __int64 WinPmem::pad(unsigned __int64 length)
 		}
 		out_offset += bytes_written;
 		length -= bytes_written;
-	};
+	}
 
 	if (paddingbuffer) free(paddingbuffer);
 	
@@ -60,6 +66,9 @@ __int64 WinPmem::pad(unsigned __int64 length)
 __int64 WinPmem::copy_memory(unsigned __int64 start, unsigned __int64 end) 
 {
 	LARGE_INTEGER large_start;
+	DWORD to_write;
+	DWORD bytes_read = 0;
+	DWORD bytes_written = 0;
 	unsigned __int64 count = 0;
 	BOOL result = FALSE;
 	unsigned char * largebuffer = (unsigned char *) malloc(BUFF_SIZE); // ~ 16 MB
@@ -81,9 +90,9 @@ __int64 WinPmem::copy_memory(unsigned __int64 start, unsigned __int64 end)
 
 	while(start < end) 
 	{
-		DWORD to_write = (DWORD) min((BUFF_SIZE), end - start); // ReadFile wants a DWORD, for whatever reason.
-		DWORD bytes_read = 0;
-		DWORD bytes_written = 0;
+		to_write = (DWORD) min((BUFF_SIZE), end - start); // ReadFile wants a DWORD, for whatever reason.
+		bytes_read = 0;
+		bytes_written = 0;
 
 		large_start.QuadPart = start;
 		
@@ -291,7 +300,7 @@ __int64 WinPmem::write_raw_image()
 	BOOL result = FALSE;
 	__int64 i;
 	__int64 status = -1;
-	SYSTEMTIME st, lt;
+	SYSTEMTIME st;
 
 	if(out_fd_==INVALID_HANDLE_VALUE) 
 	{

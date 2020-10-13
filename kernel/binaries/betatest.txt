@@ -1,0 +1,5 @@
+PW: betatest
+
+Don't forget 
+* bcdedit /set testsigning on & reboot
+* memory compression off for Volatility.
