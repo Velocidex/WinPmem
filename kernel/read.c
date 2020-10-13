@@ -155,6 +155,12 @@ static ULONG MapIOPagePartialRead(IN PDEVICE_EXTENSION extension,
 			MmUnmapIoSpace(mapped_buffer, PAGE_SIZE);
 			result = to_read;
 		}
+		else
+		{
+			RtlZeroMemory(buf, to_read); // return zeros instead
+			DbgPrint("Warning: unable to read %d bytes from %p, doing padding instead.\n", to_read, mapped_buffer+page_offset);
+			result = to_read;
+		}
 	}
 	except(EXCEPTION_EXECUTE_HANDLER)
 	{
