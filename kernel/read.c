@@ -294,10 +294,13 @@ NTSTATUS DeviceRead(IN PDEVICE_EXTENSION extension,
 	
     if (bytes_read==0) 
 	{
+		// As it is now, the issue is that we do not know whether a real error happened or 'only' a VSM/Hyper-v induced read error.
+		// The read handler function returns either the number of bytes or 0 (but no status).
+		// We could avoid that by giving a ULONG * bytes_read to the read handler function and have a NTSTATUS returned instead. 
 		DbgPrint("An error occurred: no bytes read.\n");
 		MmUnlockPages(mdl);
 		IoFreeMdl(mdl);
-		status = STATUS_IO_DEVICE_ERROR; // That's a immediate fatal error. The userspace part should really stop ASAP on this particular read error.
+		status = STATUS_IO_DEVICE_ERROR;
 		goto end;
 	}
 	
@@ -392,6 +395,7 @@ BOOLEAN pmemFastIoRead (
 	{
 		status = GetExceptionCode();
 		DbgPrint("Error: 0x%08x, write-probe in pmemFastIoRead. Bad/nonexisting buffer.\n", status);
+		status = STATUS_INVALID_PARAMETER; // The caller tried to give us a bad/non-existing buffer. That's invalid.
 		goto bail_out;
 	}
 	
@@ -424,9 +428,11 @@ BOOLEAN pmemFastIoRead (
 	// Also check the return of Device Read. Do not simply return.
 	if ((status != STATUS_SUCCESS) || (total_read == 0))
 	{
+		// As it is now, the issue is that we do not know whether a real error happened or 'only' a VSM/Hyper-v induced read error.
+		// The read handler function returns either the number of bytes or 0 (but no status).
+		// We could avoid that by giving a ULONG * bytes_read to the read handler function and have a NTSTATUS returned instead. 
 		DbgPrint("Error: a fatal fast I/O read error occurred: no bytes read.\n");
-		// set it to STATUS_IO_DEVICE_ERROR:
-		status = STATUS_IO_DEVICE_ERROR; // The userspace part should really stop ASAP on this particular read error.
+		status = STATUS_IO_DEVICE_ERROR;
 		goto bail_out;
 	}
 	
@@ -524,9 +530,7 @@ NTSTATUS PmemRead(IN PDEVICE_OBJECT  DeviceObject, IN PIRP  Irp)
 
 		status = GetExceptionCode();
 		DbgPrint("Error: 0x%08x, probe in PmemRead. A naughty process sent us a bad/nonexisting buffer.\n", status);
-		// Of course now we don't continue. 
-		
-		status = STATUS_SUCCESS; // to the I/O manager: everything's under control. Nothing to see here.
+		status = STATUS_INVALID_PARAMETER; // The caller tried to give us a bad/non-existing buffer. That's invalid.
 		goto exit;
 	}
 	
@@ -566,7 +570,7 @@ NTSTATUS PmemRead(IN PDEVICE_OBJECT  DeviceObject, IN PIRP  Irp)
 
 #if PMEM_WRITE_ENABLED == 1
 
-// TODO: allowing large write window sizes.
+// TODO: allowing large write window sizes. (?)
 // NOTE: I limited it to PAGE_SIZE. It's safe, but restricted. (relatively spoken)
 
 NTSTATUS PmemWrite(IN PDEVICE_OBJECT  DeviceObject, IN PIRP  Irp) 
