@@ -96,7 +96,7 @@ ULONG PhysicalMemoryPartialRead(IN PDEVICE_EXTENSION extension,
 	// It is happening outside of the "OS". As a rather profane kernel driver, we must live with it 
 	// and be prepared to be unable to read from a memory location, without any "sane" reason. (like, "out of nothing")
 	// The approach: we very carefully check if it's readable and if yes, we return the bytes. 
-	// Otherwise we are already prepared to return zeros instead.
+	// Otherwise we return immediately with a read error.
 	
 	try // Hyper-v/VSM induced possible read error
 	{
@@ -140,7 +140,7 @@ static ULONG MapIOPagePartialRead(IN PDEVICE_EXTENSION extension,
 	// It is happening outside of the "OS". As a rather profane kernel driver, we must live with it 
 	// and be prepared to be unable to read from a memory location, without any "sane" reason. (like, "out of nothing")
 	// The approach: we very carefully check if it's readable and if yes, we return the bytes. 
-	// Otherwise we are already prepared to return zeros instead.
+	// Otherwise we return immediately with a read error.
 
 	try // Hyper-v/VSM induced possible read error
 	{
@@ -204,7 +204,7 @@ static ULONG PTEMmapPartialRead(IN PDEVICE_EXTENSION extension,
 		// It is happening outside of the "OS". As a rather profane kernel driver, we must live with it 
 		// and be prepared to be unable to read from a memory location, without any "sane" reason. (like, "out of nothing")
 		// The approach: we very carefully check if it's readable and if yes, we return the bytes. 
-		// Otherwise we are already prepared to return zeros instead.
+		// Otherwise we return immediately with a read error.
 		
 		try  // Hyper-v/VSM induced possible read error
 		{ // "be super extra careful here." 
@@ -699,7 +699,7 @@ NTSTATUS PmemWrite(IN PDEVICE_OBJECT  DeviceObject, IN PIRP  Irp)
 	// It is happening outside of the "OS". As a rather profane kernel driver, we must live with it 
 	// and be prepared to be unable to read from a memory location, without any "sane" reason. (like, "out of nothing")
 	// The approach: we very carefully check if it's readable and if yes, we return the bytes. 
-	// Otherwise we are already prepared to return zeros instead.
+	// Otherwise we return immediately with a write error.
 
 	try // Hyper-v/VSM induced possible write error
 	{
