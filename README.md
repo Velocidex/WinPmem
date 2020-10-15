@@ -104,7 +104,7 @@ This will load the drivers and turn on write support.
 This project would also not be possible without support from the wider
 DFIR community:
 
-* We would like to thank Emre Tinaztepe and our other supporters at
+* We would like to thank Emre Tinaztepe and Mehmet GÖKSU at
 [Binalyze](https://binalyze.com/).
 
 Our open source contributors:

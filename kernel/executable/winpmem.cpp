@@ -24,403 +24,465 @@ constexpr auto BUFF_SIZE = (4096 * 4096);
 /**
  * Pad file in pad range with zeros.
 */
-__int64 WinPmem::pad(unsigned __int64 length) 
+__int64 WinPmem::pad(unsigned __int64 start, unsigned __int64 length)
 {
-	DWORD bytes_written = 0;
-	DWORD to_write;
-	BOOL result = FALSE;
-	unsigned char * paddingbuffer = (unsigned char * ) malloc(BUFF_SIZE);
-	
-	
-	if (!paddingbuffer) {
-		return 0;
-	};
-	ZeroMemory(paddingbuffer, BUFF_SIZE);
+        DWORD bytes_written = 0;
+        BOOL result = FALSE;
+        unsigned __int64 count = 0;
+        unsigned char * paddingbuffer = (unsigned char * ) malloc(BUFF_SIZE);
+        if (!paddingbuffer) {
+                return 0;
+        };
+        ZeroMemory(paddingbuffer, BUFF_SIZE);
 
-	printf("pad\n");
-	printf(" - length: 0x%llx\n", length);
+        printf("pad\n");
+        printf(" - length: 0x%llx\n", length);
 
-	while (length > 0) 
-	{
-		to_write = (DWORD)min((BUFF_SIZE), length);
-		
-		result = WriteFile(out_fd_, paddingbuffer, to_write, &bytes_written, NULL);
-		
-		if ((!(result)) || (bytes_written != to_write))
-		{
-			LogLastError(TEXT("Failed to write padding"));
-			goto error;
-		}
-		out_offset += bytes_written;
-		length -= bytes_written;
-	}
+        while (length > 0) {
+                DWORD to_write = (DWORD)min((BUFF_SIZE), length);
+                result = WriteFile(out_fd_, paddingbuffer, to_write, &bytes_written, NULL);
+                if ((!(result)) || (bytes_written != to_write))
+                {
+                        LogLastError(TEXT("Failed to write padding"));
+                        goto error;
+                }
 
-	if (paddingbuffer) free(paddingbuffer);
-	
-	return 1;
+                // === Progress printing ===
+                if ((count % 50) == 0) {
+                    Log(TEXT("\n%02lld%% 0x%08llX "), (start * 100) / max_physical_memory_,
+                        start);
+                }
 
-	error:
-	return 0;
+                Log(TEXT("."));
+
+                count++;
+                out_offset += bytes_written;
+                length -= bytes_written;
+        };
+
+        if (paddingbuffer) free(paddingbuffer);
+
+        return 1;
+
+        error:
+        return 0;
 }
 
-__int64 WinPmem::copy_memory(unsigned __int64 start, unsigned __int64 end) 
-{
-	LARGE_INTEGER large_start;
-	DWORD to_write;
-	DWORD bytes_read = 0;
-	DWORD bytes_written = 0;
-	unsigned __int64 count = 0;
-	BOOL result = FALSE;
-	unsigned char * largebuffer = (unsigned char *) malloc(BUFF_SIZE); // ~ 16 MB
+// Copy memory from start to end in 1 page increments.
+__int64 WinPmem::copy_memory_small(unsigned __int64 start, unsigned __int64 end) {
+    LARGE_INTEGER large_start;
 
-	if (start > max_physical_memory_)
-	{
-		return 0;
-	}
+    // Total number of pages written.
+    unsigned __int64 count = 0;
 
-	// Clamp the region to the top of physical memory.
-	if (end > max_physical_memory_) 
-	{
-		end = max_physical_memory_;
-	}
-	
-	printf("copy_memory\n");
-	printf(" - start: 0x%llx\n", start);
-	printf(" - end: 0x%llx\n", end);
+    BOOL result = FALSE;
+    const int buff_size = 0x1000;
+    unsigned char* largebuffer = (unsigned char*)malloc(buff_size);
+    unsigned char* nullbuffer = (unsigned char*)calloc(buff_size, 1);
 
-	while(start < end) 
-	{
-		to_write = (DWORD) min((BUFF_SIZE), end - start); // ReadFile wants a DWORD, for whatever reason.
-		bytes_read = 0;
-		bytes_written = 0;
+    if (start > max_physical_memory_) {
+        return 0;
+    }
 
-		large_start.QuadPart = start;
-		
-		//printf(" - to_write: 0x%lx\n", (DWORD)to_write);
-		//printf(" - start: 0x%llx\n", start);
+    // Clamp the region to the top of physical memory.
+    if (end > max_physical_memory_) {
+        end = max_physical_memory_;
+    }
 
-		// seek
-		result = SetFilePointerEx(fd_, large_start, NULL, FILE_BEGIN);
-		
-		if (!(result))
-		{
-		  LogLastError(TEXT("Failed to seek in the pmem device.\n"));
-		  goto error;
-		}
-		
-		// read
-		result = ReadFile(fd_, largebuffer, to_write, &bytes_read, NULL);
+    while (start < end) {
+        DWORD to_write = (DWORD)min((buff_size), end - start);
+        DWORD bytes_read = 0;
+        DWORD bytes_written = 0;
 
-		if ((!(result)) || (bytes_read != to_write))
-		{
-		  LogLastError(TEXT("Failed to Read memory.\n"));
-		  goto error;
-		}
-		
-		//printf(" - bytes_read: 0x%lx\n", bytes_read);
-		
-		result = WriteFile(out_fd_, largebuffer, bytes_read, &bytes_written, NULL);
+        large_start.QuadPart = start;
 
-		if ((!(result)) || bytes_written != bytes_read) 
-		{
-		  LogLastError(TEXT("Failed to write image file"));
-		  goto error;
-		}
-		
-		//printf(" - bytes_written: 0x%lx\n", bytes_written);
+        // seek input stream to the required offset.
+        result = SetFilePointerEx(fd_, large_start, NULL, FILE_BEGIN);
 
-		out_offset += bytes_written;
-		
-		
-		// === Progress printing ===
+        if (!(result)) {
+            LogLastError(TEXT("Failed to seek in the pmem device.\n"));
+            goto error;
+        }
 
-		if((count % 50) == 0) {
-		  Log(TEXT("\n%02lld%% 0x%08llX "), (start * 100) / max_physical_memory_,
-			  start);
-		}
+        // read from memory stream
+        result = ReadFile(fd_, largebuffer, to_write, &bytes_read, NULL);
 
-		Log(TEXT("."));
+        // Page read failed - pad with nulls and keep going.
+        if ((!(result)) || (bytes_read != to_write)) {
+            result = WriteFile(out_fd_, nullbuffer, buff_size, &bytes_written, NULL);
+        }
+        else {
+            result = WriteFile(out_fd_, largebuffer, bytes_read, &bytes_written, NULL);
+        }
 
-		start += to_write;
-		count ++;
+        if (!result) {
+            LogLastError(TEXT("Failed to write image file"));
+            goto error;
+        }
 
-	}
-
-	Log(TEXT("\n"));
-	if (largebuffer) free(largebuffer);
-	return 1;
+        start += to_write;
+        count++;
+    }
+    if (largebuffer) free(largebuffer);
+    if (nullbuffer) free(nullbuffer);
+    return 1;
 
 error:
-	if (largebuffer) free(largebuffer);
-	return 0;
+    if (largebuffer) free(largebuffer);
+    if (nullbuffer) free(nullbuffer);
+    return 0;
+}
+
+__int64 WinPmem::copy_memory(unsigned __int64 start, unsigned __int64 end) {
+        LARGE_INTEGER large_start;
+
+        // Total number of pages written.
+        unsigned __int64 count = 0;
+
+        BOOL result = FALSE;
+        unsigned char * largebuffer = (unsigned char *) malloc(BUFF_SIZE); // ~ 16 MB
+
+        if (start > max_physical_memory_)
+        {
+                return 0;
+        }
+
+        // Clamp the region to the top of physical memory.
+        if (end > max_physical_memory_)
+        {
+                end = max_physical_memory_;
+        }
+
+        printf("\ncopy_memory\n");
+        printf(" - start: 0x%llx\n", start);
+        printf(" - end: 0x%llx\n", end);
+
+        while(start < end)
+        {
+                DWORD to_write = (DWORD) min((BUFF_SIZE), end - start); // ReadFile wants a DWORD, for whatever reason.
+                DWORD bytes_read = 0;
+                DWORD bytes_written = 0;
+
+                large_start.QuadPart = start;
+
+                //printf(" - to_write: 0x%lx\n", (DWORD)to_write);
+                //printf(" - start: 0x%llx\n", start);
+
+                // seek
+                result = SetFilePointerEx(fd_, large_start, NULL, FILE_BEGIN);
+
+                if (!(result))
+                {
+                  LogLastError(TEXT("Failed to seek in the pmem device.\n"));
+                  goto error;
+                }
+
+                auto indicator = TEXT(".");
+
+                // read
+                result = ReadFile(fd_, largebuffer, to_write, &bytes_read, NULL);
+
+                if (!result || bytes_read != to_write) {
+                    // Indicates this 16mb buffer was read slowly.
+                    indicator = TEXT("x");
+                    result = copy_memory_small( start, start + to_write);
+                } else {
+                    result = WriteFile(out_fd_, largebuffer, bytes_read, &bytes_written, NULL);
+                }
+
+                if (!result) {
+                  LogLastError(TEXT("Failed to write image file"));
+                  goto error;
+                }
+
+                out_offset += bytes_written;
+
+                // === Progress printing ===
+                if ((count % 50) == 0) {
+                        Log(TEXT("\n%02lld%% 0x%08llX "), (start * 100) / max_physical_memory_,
+                            start);
+                }
+
+                Log(indicator);
+
+                start += to_write;
+                count ++;
+        }
+
+        Log(TEXT("\n"));
+        if (largebuffer) free(largebuffer);
+        return 1;
+
+error:
+        if (largebuffer) free(largebuffer);
+        return 0;
 }
 
 
 // Turn on write support in the driver.
-__int64 WinPmem::set_write_enabled(void) 
+__int64 WinPmem::set_write_enabled(void)
 {
-	unsigned _int32 mode = 0;
-	DWORD size;
-	BOOL result = FALSE;
+        unsigned _int32 mode = 0;
+        DWORD size;
+        BOOL result = FALSE;
 
-	result = DeviceIoControl(fd_, IOCTL_WRITE_ENABLE, 
-							  &mode, 4, // in
-							  NULL, 0, // out
-							  &size, NULL);
+        result = DeviceIoControl(fd_, IOCTL_WRITE_ENABLE,
+                                 &mode, 4, // in
+                                 NULL, 0, // out
+                                 &size, NULL);
 
-	if (!(result))
-	{
-		LogError(TEXT("Failed to set write mode. Maybe these drivers do not support this mode?\n"));
-		return -1;
-	}
+        if (!(result)) {
+            LogError(TEXT("Failed to set write mode. Maybe these drivers do not support this mode?\n"));
+            return -1;
+        }
 
-	Log(TEXT("Write mode enabled! Hope you know what you are doing.\n"));
-	return 1;
+        Log(TEXT("Write mode enabled! Hope you know what you are doing.\n"));
+        return 1;
 }
 
 
-void WinPmem::print_mode_(unsigned __int32 mode) 
+void WinPmem::print_mode_(unsigned __int32 mode)
 {
-	switch(mode) 
-	{
-		case PMEM_MODE_IOSPACE:
-			Log(TEXT("MMMapIoSpace"));
-			break;
+        switch(mode)
+        {
+                case PMEM_MODE_IOSPACE:
+                        Log(TEXT("MMMapIoSpace"));
+                        break;
 
-		case PMEM_MODE_PHYSICAL:
-			Log(TEXT("\\\\.\\PhysicalMemory"));
-			break;
+                case PMEM_MODE_PHYSICAL:
+                        Log(TEXT("\\\\.\\PhysicalMemory"));
+                        break;
 
-		case PMEM_MODE_PTE:
-			Log(TEXT("PTE Remapping"));
-			break;
+                case PMEM_MODE_PTE:
+                        Log(TEXT("PTE Remapping"));
+                        break;
 
-		default:
-			Log(TEXT("Unknown"));
-	}
+                default:
+                        Log(TEXT("Unknown"));
+        }
 }
 
 
 // Display information about the memory geometry.
 // Simply drop a 'care package' info struct (you get that from the driver) into this function to get a nice printout.
-void WinPmem::print_memory_info(PWINPMEM_MEMORY_INFO pinfo) 
+void WinPmem::print_memory_info(PWINPMEM_MEMORY_INFO pinfo)
 {
-	__int64 i=0;
-	BOOL result = FALSE;
-	
-	if (!pinfo) return;
+        __int64 i=0;
+        BOOL result = FALSE;
 
-	Log(TEXT("CR3: 0x%010llX\n %d memory ranges:\n"), pinfo->CR3.QuadPart, pinfo->NumberOfRuns);
+        if (!pinfo) return;
 
-	for (i=0; i < pinfo->NumberOfRuns.QuadPart; i++) 
-	{
-		Log(TEXT("Start 0x%08llX - Length 0x%08llX\n"), pinfo->Run[i].BaseAddress.QuadPart, pinfo->Run[i].NumberOfBytes.QuadPart);
-		max_physical_memory_ = pinfo->Run[i].BaseAddress.QuadPart + pinfo->Run[i].NumberOfBytes.QuadPart;
-	}
-	
-	Log(TEXT("max_physical_memory_ 0x%llx\n"), max_physical_memory_);
-	
-	Log(TEXT("Acquitision mode "));
-	print_mode_(mode_);
-	Log(TEXT("\n"));
-	
-	return;
+        Log(TEXT("CR3: 0x%010llX\n %d memory ranges:\n"), pinfo->CR3.QuadPart, pinfo->NumberOfRuns);
+
+        for (i=0; i < pinfo->NumberOfRuns.QuadPart; i++)
+        {
+                Log(TEXT("Start 0x%08llX - Length 0x%08llX\n"), pinfo->Run[i].BaseAddress.QuadPart, pinfo->Run[i].NumberOfBytes.QuadPart);
+                max_physical_memory_ = pinfo->Run[i].BaseAddress.QuadPart + pinfo->Run[i].NumberOfBytes.QuadPart;
+        }
+
+        Log(TEXT("max_physical_memory_ 0x%llx\n"), max_physical_memory_);
+
+        Log(TEXT("Acquitision mode "));
+        print_mode_(mode_);
+        Log(TEXT("\n"));
+
+        return;
 }
 
-__int64 WinPmem::set_acquisition_mode(unsigned __int32 mode) 
+__int64 WinPmem::set_acquisition_mode(unsigned __int32 mode)
 {
-	DWORD size;
-	BOOL result = FALSE;
-	
-	// let's do some sanity checking first.
-	if (! ((mode == PMEM_MODE_IOSPACE) || (mode == PMEM_MODE_PHYSICAL) || (mode == PMEM_MODE_PTE)) )
-	{
-		Log(TEXT("This mode does not exist!"));
-		return -1;
-	}
+        DWORD size;
+        BOOL result = FALSE;
 
-	result = DeviceIoControl(fd_, IOCTL_SET_MODE, 
-						&mode, 4, // in
-						NULL, 0,  // out
-					  &size, NULL);
+        // let's do some sanity checking first.
+        if (! ((mode == PMEM_MODE_IOSPACE) || (mode == PMEM_MODE_PHYSICAL) || (mode == PMEM_MODE_PTE)) )
+        {
+                Log(TEXT("This mode does not exist!"));
+                return -1;
+        }
 
-	// Set the acquisition mode.
-	if(!(result)) 
-	{
-		Log(TEXT("Failed to set acquisition mode %lu "), mode);
-		LogLastError(L"");
-		print_mode_(mode);
-		Log(TEXT("\n"));
-		return -1;
-	}
+        result = DeviceIoControl(fd_, IOCTL_SET_MODE,
+                                                &mode, 4, // in
+                                                NULL, 0,  // out
+                                          &size, NULL);
 
-	mode_ = mode;
-	return 1;
+        // Set the acquisition mode.
+        if(!(result))
+        {
+                Log(TEXT("Failed to set acquisition mode %lu "), mode);
+                LogLastError(L"");
+                print_mode_(mode);
+                Log(TEXT("\n"));
+                return -1;
+        }
+
+        mode_ = mode;
+        return 1;
 }
 
-__int64 WinPmem::create_output_file(TCHAR *output_filename) 
+__int64 WinPmem::create_output_file(TCHAR *output_filename)
 {
-	__int64 status = 1;
+        __int64 status = 1;
 
-	// The special file name of - means we should use stdout.
-	
-	if (!_tcscmp(output_filename, TEXT("-"))) 
-	{
-		out_fd_ = GetStdHandle(STD_OUTPUT_HANDLE);
-		suppress_output = TRUE;
-		status = 1;
-		goto exit;
-	}
+        // The special file name of - means we should use stdout.
 
-	// Create the output file.
-	out_fd_ = CreateFile(output_filename,
-					   GENERIC_WRITE,
-					   FILE_SHARE_READ,
-					   NULL,
-					   CREATE_ALWAYS,
-					   FILE_ATTRIBUTE_NORMAL,
-					   NULL);
+        if (!_tcscmp(output_filename, TEXT("-")))
+        {
+                out_fd_ = GetStdHandle(STD_OUTPUT_HANDLE);
+                suppress_output = TRUE;
+                status = 1;
+                goto exit;
+        }
 
-	if (out_fd_ == INVALID_HANDLE_VALUE) 
-	{
-		LogLastError(TEXT("Unable to create output file."));
-		status = -1;
-		goto exit;
-	}
+        // Create the output file.
+        out_fd_ = CreateFile(output_filename,
+                                           GENERIC_WRITE,
+                                           FILE_SHARE_READ,
+                                           NULL,
+                                           CREATE_ALWAYS,
+                                           FILE_ATTRIBUTE_NORMAL,
+                                           NULL);
+
+        if (out_fd_ == INVALID_HANDLE_VALUE)
+        {
+                LogLastError(TEXT("Unable to create output file."));
+                status = -1;
+                goto exit;
+        }
 
 exit:
-	return status;
+        return status;
 }
 
-__int64 WinPmem::write_raw_image() 
+__int64 WinPmem::write_raw_image()
 {
-	// Somewhere to store the info from the driver;
-	WINPMEM_MEMORY_INFO info;
-	DWORD size;
-	BOOL result = FALSE;
-	__int64 i;
-	__int64 status = -1;
-	SYSTEMTIME st;
+        // Somewhere to store the info from the driver;
+        WINPMEM_MEMORY_INFO info;
+        DWORD size;
+        BOOL result = FALSE;
+        __int64 i;
+        __int64 status = -1;
+        SYSTEMTIME st, lt;
 
-	if(out_fd_==INVALID_HANDLE_VALUE) 
-	{
-		LogError(TEXT("Must open an output file first."));
-		goto exit;
-	}
+        if(out_fd_==INVALID_HANDLE_VALUE)
+        {
+                LogError(TEXT("Must open an output file first."));
+                goto exit;
+        }
 
-	RtlZeroMemory(&info, sizeof(WINPMEM_MEMORY_INFO));
+        RtlZeroMemory(&info, sizeof(WINPMEM_MEMORY_INFO));
 
-	// Get the memory ranges.
-	result = DeviceIoControl(fd_, IOCTL_GET_INFO, 
-						NULL, 0, // in
-						(char *)&info, sizeof(WINPMEM_MEMORY_INFO), // out
-						&size, NULL);
-						
-	if (!(result)) 
-	{
-		LogLastError(TEXT("Failed to get memory geometry,"));
-		status = -1;
-		goto exit;
-	}
+        // Get the memory ranges.
+        result = DeviceIoControl(fd_, IOCTL_GET_INFO,
+                                                NULL, 0, // in
+                                                (char *)&info, sizeof(WINPMEM_MEMORY_INFO), // out
+                                                &size, NULL);
 
-
-	GetSystemTime(&st);
-	printf("The system time is: %02d:%02d:%02d\n", st.wHour, st.wMinute, st.wSecond);
-	Log(TEXT("Will generate a RAW image \n"));
-	
-	#ifdef _WIN64
-	printf(" - buffer_size_: 0x%llx\n", buffer_size_);
-	#else
-	printf(" - buffer_size_: 0x%x\n", buffer_size_);
-	#endif
-	
-	print_memory_info(&info);
+        if (!(result))
+        {
+                LogLastError(TEXT("Failed to get memory geometry,"));
+                status = -1;
+                goto exit;
+        }
 
 
-	// write ranges and pass non ranges
+        GetSystemTime(&st);
+        printf("The system time is: %02d:%02d:%02d\n", st.wHour, st.wMinute, st.wSecond);
+        Log(TEXT("Will generate a RAW image \n"));
 
-	__int64 current = 0;
-	
-	for(i=0; i < info.NumberOfRuns.QuadPart; i++) 
-	{
-		if(info.Run[i].BaseAddress.QuadPart > current) 
-		{
-			// pad zeros from current until begin of next RAM memory region.
-		  printf("Padding from 0x%08llX to 0x%08llX\n", current, info.Run[i].BaseAddress.QuadPart);
-		  
-		  if (!pad(info.Run[i].BaseAddress.QuadPart - current)) 
-		  {
-			printf("padding went terribly wrong! Cancelling & terminating. \n");
-			goto exit;
-		  }
-		}
-		
-		// write next RAM memory region to file.
+        #ifdef _WIN64
+        printf(" - buffer_size_: 0x%llx\n", buffer_size_);
+        #else
+        printf(" - buffer_size_: 0x%x\n", buffer_size_);
+        #endif
 
-		copy_memory(info.Run[i].BaseAddress.QuadPart, info.Run[i].BaseAddress.QuadPart + info.Run[i].NumberOfBytes.QuadPart);
-		
-		// update current cursor offset.
-		
-		current = info.Run[i].BaseAddress.QuadPart + info.Run[i].NumberOfBytes.QuadPart;
-	}
+        print_memory_info(&info);
 
-	// All is well.
-	status = 1;
 
-	exit:
-	CloseHandle(out_fd_);
-	out_fd_ = INVALID_HANDLE_VALUE;
+        // write ranges and pass non ranges
 
-	GetSystemTime(&st);
-	printf("The system time is: %02d:%02d:%02d\n", st.wHour, st.wMinute, st.wSecond);
+        __int64 current = 0;
 
-	return status;
+        for(i=0; i < info.NumberOfRuns.QuadPart; i++)
+        {
+                if(info.Run[i].BaseAddress.QuadPart > current)
+                {
+                        // pad zeros from current until begin of next RAM memory region.
+                  printf("Padding from 0x%08llX to 0x%08llX\n", current, info.Run[i].BaseAddress.QuadPart);
+
+                  if (!pad(current, info.Run[i].BaseAddress.QuadPart - current))
+                  {
+                        printf("padding went terribly wrong! Cancelling & terminating. \n");
+                        goto exit;
+                  }
+                }
+
+                // write next RAM memory region to file.
+
+                copy_memory(info.Run[i].BaseAddress.QuadPart, info.Run[i].BaseAddress.QuadPart + info.Run[i].NumberOfBytes.QuadPart);
+
+                // update current cursor offset.
+
+                current = info.Run[i].BaseAddress.QuadPart + info.Run[i].NumberOfBytes.QuadPart;
+        }
+
+        // All is well.
+        status = 1;
+
+        exit:
+        CloseHandle(out_fd_);
+        out_fd_ = INVALID_HANDLE_VALUE;
+
+        GetSystemTime(&st);
+        printf("The system time is: %02d:%02d:%02d\n", st.wHour, st.wMinute, st.wSecond);
+
+        return status;
 }
 
 
 WinPmem::WinPmem():
-	fd_(INVALID_HANDLE_VALUE),
-	buffer_size_(0x1000), // can be used for write enabled mode.
-	buffer_(NULL),
-	suppress_output(FALSE),
-	service_name(PMEM_SERVICE_NAME),
-	max_physical_memory_(0),
-	mode_(PMEM_MODE_PHYSICAL),
-	default_mode_(PMEM_MODE_PHYSICAL),
-	metadata_(NULL),
-	metadata_len_(0),
-	driver_filename_(NULL),
-	driver_is_tempfile_(false),
-	out_offset(0)
-	
-	{}
+        fd_(INVALID_HANDLE_VALUE),
+        buffer_size_(0x1000), // can be used for write enabled mode.
+        buffer_(NULL),
+        suppress_output(FALSE),
+        service_name(PMEM_SERVICE_NAME),
+        max_physical_memory_(0),
+        mode_(PMEM_MODE_PHYSICAL),
+        default_mode_(PMEM_MODE_PHYSICAL),
+        metadata_(NULL),
+        metadata_len_(0),
+        driver_filename_(NULL),
+        driver_is_tempfile_(false),
+        out_offset(0)
+
+        {}
 
 
 WinPmem::~WinPmem()
 {
-	if (fd_ != INVALID_HANDLE_VALUE) 
-	{
-		CloseHandle(fd_);
-	}
+        if (fd_ != INVALID_HANDLE_VALUE)
+        {
+                CloseHandle(fd_);
+        }
 
-	if (buffer_)
-	{
-		delete [] buffer_;
-	}
+        if (buffer_)
+        {
+                delete [] buffer_;
+        }
 
-	if (driver_filename_ && driver_is_tempfile_) free(driver_filename_);
+        if (driver_filename_ && driver_is_tempfile_) free(driver_filename_);
 }
 
-void WinPmem::LogError(TCHAR *message) 
+void WinPmem::LogError(TCHAR *message)
 {
   _tcsncpy_s(last_error, message, sizeof(last_error));
-  
+
   if (suppress_output) return;
 
   wprintf(L"%s", message);
 }
 
-void WinPmem::Log(const TCHAR *message, ...) 
+void WinPmem::Log(const TCHAR *message, ...)
 {
   if (suppress_output) return;
 
@@ -431,7 +493,7 @@ void WinPmem::Log(const TCHAR *message, ...)
 }
 
 
-void WinPmem::LogLastError(TCHAR *message) 
+void WinPmem::LogLastError(TCHAR *message)
 {
   TCHAR *buffer;
   DWORD dw = GetLastError();
@@ -451,338 +513,338 @@ void WinPmem::LogLastError(TCHAR *message)
 
 }
 
-__int64 WinPmem::extract_file_(__int64 resource_id, TCHAR *filename) 
+__int64 WinPmem::extract_file_(__int64 resource_id, TCHAR *filename)
 {
-	// Locate the driver resource in the .EXE file.
-	HRSRC hRes = FindResource(NULL, MAKEINTRESOURCE(resource_id), L"FILE");
+        // Locate the driver resource in the .EXE file.
+        HRSRC hRes = FindResource(NULL, MAKEINTRESOURCE(resource_id), L"FILE");
 
-	if (hRes == NULL) 
-	{
-		LogError(TEXT("Could not locate driver resource."));
-		goto error;
-	}
+        if (hRes == NULL)
+        {
+                LogError(TEXT("Could not locate driver resource."));
+                goto error;
+        }
 
-	HGLOBAL hResLoad = LoadResource(NULL, hRes);
+        HGLOBAL hResLoad = LoadResource(NULL, hRes);
 
-	if (hResLoad == NULL) 
-	{
-		LogError(TEXT("Could not load driver resource."));
-		goto error;
-	}
+        if (hResLoad == NULL)
+        {
+                LogError(TEXT("Could not load driver resource."));
+                goto error;
+        }
 
-	VOID *lpResLock = LockResource(hResLoad);
+        VOID *lpResLock = LockResource(hResLoad);
 
-	if (lpResLock == NULL) 
-	{
-		LogError(TEXT("Could not lock driver resource."));
-		goto error;
-	}
+        if (lpResLock == NULL)
+        {
+                LogError(TEXT("Could not lock driver resource."));
+                goto error;
+        }
 
-	DWORD size = SizeofResource(NULL, hRes);
+        DWORD size = SizeofResource(NULL, hRes);
 
-	// Now open the filename and write the driver image on it.
-	HANDLE out_fd = CreateFile(filename, GENERIC_WRITE, 0, NULL,
-							 CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+        // Now open the filename and write the driver image on it.
+        HANDLE out_fd = CreateFile(filename, GENERIC_WRITE, 0, NULL,
+                                                         CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 
-	if(out_fd == INVALID_HANDLE_VALUE) 
-	{
-		LogError(TEXT("Can not create temporary file."));
-		goto error_resource;
-	}
+        if(out_fd == INVALID_HANDLE_VALUE)
+        {
+                LogError(TEXT("Can not create temporary file."));
+                goto error_resource;
+        }
 
-	if (!WriteFile(out_fd, lpResLock, size, &size, NULL)) 
-	{
-		LogError(TEXT("Can not write to temporary file. Maybe you do not have the rights?"));
-		goto error_file;
-	}
+        if (!WriteFile(out_fd, lpResLock, size, &size, NULL))
+        {
+                LogError(TEXT("Can not write to temporary file. Maybe you do not have the rights?"));
+                goto error_file;
+        }
 
-	CloseHandle(out_fd);
+        CloseHandle(out_fd);
 
-	return 1;
+        return 1;
 
 error_file:
-	CloseHandle(out_fd);
+        CloseHandle(out_fd);
 
 error_resource:
 error:
-	return -1;
+        return -1;
 
 }
 
 
-void WinPmem::set_driver_filename(TCHAR *driver_filename) 
+void WinPmem::set_driver_filename(TCHAR *driver_filename)
 {
-	DWORD res;
+        DWORD res;
 
-	if(driver_filename_) 
-	{
-		free(driver_filename_);
-		driver_filename_ = NULL;
-	}
+        if(driver_filename_)
+        {
+                free(driver_filename_);
+                driver_filename_ = NULL;
+        }
 
-	if (driver_filename) 
-	{
-		driver_filename_ = (TCHAR *)malloc(MAX_PATH * sizeof(TCHAR));
-		
-		if (driver_filename_) 
-		{
-		  res = GetFullPathName(driver_filename, MAX_PATH, driver_filename_, NULL);
-		}
-	}
+        if (driver_filename)
+        {
+                driver_filename_ = (TCHAR *)malloc(MAX_PATH * sizeof(TCHAR));
+
+                if (driver_filename_)
+                {
+                  res = GetFullPathName(driver_filename, MAX_PATH, driver_filename_, NULL);
+                }
+        }
 }
 
 
-__int64 WinPmem::install_driver() 
+__int64 WinPmem::install_driver()
 {
-	SC_HANDLE scm, service;
-	__int64 status = -1;
+        SC_HANDLE scm, service;
+        __int64 status = -1;
 
-	// Try to load the driver from the resource section.
-	if (extract_driver() < 0) goto error;
+        // Try to load the driver from the resource section.
+        if (extract_driver() < 0) goto error;
 
-	uninstall_driver();
+        uninstall_driver();
 
-	scm = OpenSCManager(NULL, NULL, SC_MANAGER_CREATE_SERVICE);
-	
-	if (!scm) 
-	{
-		LogError(TEXT("Can not open SCM. Are you administrator?\n"));
-		goto error;
-	}
+        scm = OpenSCManager(NULL, NULL, SC_MANAGER_CREATE_SERVICE);
 
-	service = CreateService(scm,
-						  service_name,
-						  service_name,
-						  SERVICE_ALL_ACCESS,
-						  SERVICE_KERNEL_DRIVER,
-						  SERVICE_DEMAND_START,
-						  SERVICE_ERROR_NORMAL,
-						  driver_filename_,
-						  NULL,
-						  NULL,
-						  NULL,
-						  NULL,
-						  NULL);
+        if (!scm)
+        {
+                LogError(TEXT("Can not open SCM. Are you administrator?\n"));
+                goto error;
+        }
 
-	if (GetLastError() == ERROR_SERVICE_EXISTS) 
-	{
-		service = OpenService(scm, service_name, SERVICE_ALL_ACCESS);
-	}
+        service = CreateService(scm,
+                                                  service_name,
+                                                  service_name,
+                                                  SERVICE_ALL_ACCESS,
+                                                  SERVICE_KERNEL_DRIVER,
+                                                  SERVICE_DEMAND_START,
+                                                  SERVICE_ERROR_NORMAL,
+                                                  driver_filename_,
+                                                  NULL,
+                                                  NULL,
+                                                  NULL,
+                                                  NULL,
+                                                  NULL);
 
-	if (!service) 
-	{
-		goto error;
-	}
-	
-	if (!StartService(service, 0, NULL)) 
-	{
-		DWORD le = GetLastError();
-		
-		if (le != ERROR_SERVICE_ALREADY_RUNNING) 
-		{
-		  printf("Error (0x%lx): StartService(), Cannot start the driver.\n", le);
-		  LogError(TEXT("Error: StartService(), Cannot start the driver.\n"));
-		  goto service_error;
-		}
-	}
+        if (GetLastError() == ERROR_SERVICE_EXISTS)
+        {
+                service = OpenService(scm, service_name, SERVICE_ALL_ACCESS);
+        }
 
-	Log(L"Loaded Driver %s.\n", driver_filename_);
+        if (!service)
+        {
+                goto error;
+        }
 
-	fd_ = CreateFile(TEXT("\\\\.\\") TEXT(PMEM_DEVICE_NAME_ASCII),
-				   // Write is needed for IOCTL.
-				   GENERIC_READ | GENERIC_WRITE,
-				   FILE_SHARE_READ | FILE_SHARE_WRITE,
-				   NULL,
-				   OPEN_EXISTING,
-				   FILE_ATTRIBUTE_NORMAL,
-				   NULL);
+        if (!StartService(service, 0, NULL))
+        {
+                DWORD le = GetLastError();
 
-	if(fd_ == INVALID_HANDLE_VALUE) 
-		{
-		LogError(TEXT("Can not open raw device."));
-		status = -1;
-	}
+                if (le != ERROR_SERVICE_ALREADY_RUNNING)
+                {
+                  printf("Error (0x%lx): StartService(), Cannot start the driver.\n", le);
+                  LogError(TEXT("Error: StartService(), Cannot start the driver.\n"));
+                  goto service_error;
+                }
+        }
 
-	status = 1;
+        Log(L"Loaded Driver %s.\n", driver_filename_);
 
-	service_error:
-	CloseServiceHandle(service);
-	CloseServiceHandle(scm);
+        fd_ = CreateFile(TEXT("\\\\.\\") TEXT(PMEM_DEVICE_NAME_ASCII),
+                                   // Write is needed for IOCTL.
+                                   GENERIC_READ | GENERIC_WRITE,
+                                   FILE_SHARE_READ | FILE_SHARE_WRITE,
+                                   NULL,
+                                   OPEN_EXISTING,
+                                   FILE_ATTRIBUTE_NORMAL,
+                                   NULL);
 
-	error:
-	// Only remove the driver file if it was a temporary file.
-	if (driver_is_tempfile_) 
-	{
-		Log(L"Deleting %s\n", driver_filename_);
-		DeleteFile(driver_filename_);
-	}
+        if(fd_ == INVALID_HANDLE_VALUE)
+                {
+                LogError(TEXT("Can not open raw device."));
+                status = -1;
+        }
 
-	return status;
+        status = 1;
+
+        service_error:
+        CloseServiceHandle(service);
+        CloseServiceHandle(scm);
+
+        error:
+        // Only remove the driver file if it was a temporary file.
+        if (driver_is_tempfile_)
+        {
+                Log(L"Deleting %s\n", driver_filename_);
+                DeleteFile(driver_filename_);
+        }
+
+        return status;
 }
 
 
-__int64 WinPmem::uninstall_driver() 
+__int64 WinPmem::uninstall_driver()
 {
-	SC_HANDLE scm, service;
-	SERVICE_STATUS ServiceStatus;
+        SC_HANDLE scm, service;
+        SERVICE_STATUS ServiceStatus;
 
-	scm = OpenSCManager(NULL, NULL, SC_MANAGER_CREATE_SERVICE);
+        scm = OpenSCManager(NULL, NULL, SC_MANAGER_CREATE_SERVICE);
 
-	if (!scm) return 0;
+        if (!scm) return 0;
 
-	service = OpenService(scm, service_name, SERVICE_ALL_ACCESS);
+        service = OpenService(scm, service_name, SERVICE_ALL_ACCESS);
 
-	if (service) 
-	{
-		ControlService(service, SERVICE_CONTROL_STOP, &ServiceStatus);
-	}
+        if (service)
+        {
+                ControlService(service, SERVICE_CONTROL_STOP, &ServiceStatus);
+        }
 
-	DeleteService(service);
-	CloseServiceHandle(service);
-	Log(TEXT("Driver Unloaded.\n"));
+        DeleteService(service);
+        CloseServiceHandle(service);
+        Log(TEXT("Driver Unloaded.\n"));
 
-	return 1;
+        return 1;
 
-	CloseServiceHandle(scm);
-	return 0;
+        CloseServiceHandle(scm);
+        return 0;
 }
 
 
 /* Create a YAML file describing the image encoded into a null terminated
    string. Caller will own the memory.
  */
-char *store_metadata_(PWINPMEM_MEMORY_INFO info) 
+char *store_metadata_(PWINPMEM_MEMORY_INFO info)
 {
-	SYSTEM_INFO sys_info;
-	struct tm newtime;
-	__time32_t aclock;
+        SYSTEM_INFO sys_info;
+        struct tm newtime;
+        __time32_t aclock;
 
-	char time_buffer[32];
-	errno_t errNum;
-	char *arch = NULL;
+        char time_buffer[32];
+        errno_t errNum;
+        char *arch = NULL;
 
-	_time32( &aclock );   // Get time in seconds.
-	_gmtime32_s( &newtime, &aclock );   // Convert time to struct tm form.
+        _time32( &aclock );   // Get time in seconds.
+        _gmtime32_s( &newtime, &aclock );   // Convert time to struct tm form.
 
-	// Print local time as a string.
-	errNum = asctime_s(time_buffer, 32, &newtime);
+        // Print local time as a string.
+        errNum = asctime_s(time_buffer, 32, &newtime);
 
-	if (errNum) 
-	{
-		time_buffer[0] = 0;
-	}
+        if (errNum)
+        {
+                time_buffer[0] = 0;
+        }
 
-	
-	// dumps - even on 32 bit platforms).
-	ZeroMemory(&sys_info, sizeof(sys_info));
-	GetNativeSystemInfo(&sys_info);
 
-	switch(sys_info.wProcessorArchitecture) 
-	{
-	case PROCESSOR_ARCHITECTURE_AMD64:
-	  arch = "AMD64";
-	  break;
+        // dumps - even on 32 bit platforms).
+        ZeroMemory(&sys_info, sizeof(sys_info));
+        GetNativeSystemInfo(&sys_info);
 
-	case PROCESSOR_ARCHITECTURE_INTEL:
-	  arch = "I386";
-	  break;
+        switch(sys_info.wProcessorArchitecture)
+        {
+        case PROCESSOR_ARCHITECTURE_AMD64:
+          arch = "AMD64";
+          break;
 
-	default:
-	  arch = "Unknown";
-	}
+        case PROCESSOR_ARCHITECTURE_INTEL:
+          arch = "I386";
+          break;
 
-	return asprintf(// A YAML File describing metadata about this image.
-				  "# PMEM\n"
-				  "---\n"   // The start of the YAML file.
-				  "acquisition_tool: 'WinPMEM, driver version: " PMEM_DRIVER_VERSION "'\n"
-				  "acquisition_timestamp: %s\n"
-				  "CR3: %#llx\n"
-				  "NtBuildNumber: %#llx\n"
-				  "NtBuildNumberAddr: %#llx\n"
-				  "KernBase: %#llx\n"
-				  "Arch: %s\n"
-				  "...\n",  // This is the end of a YAML file.
-				  time_buffer,
-				  info->CR3.QuadPart,
-				  info->NtBuildNumber.QuadPart,
-				  info->NtBuildNumberAddr.QuadPart,
-				  info->KernBase.QuadPart,
-				  arch
-				  );
-				  
+        default:
+          arch = "Unknown";
+        }
+
+        return asprintf(// A YAML File describing metadata about this image.
+                                  "# PMEM\n"
+                                  "---\n"   // The start of the YAML file.
+                                  "acquisition_tool: 'WinPMEM, driver version: " PMEM_DRIVER_VERSION "'\n"
+                                  "acquisition_timestamp: %s\n"
+                                  "CR3: %#llx\n"
+                                  "NtBuildNumber: %#llx\n"
+                                  "NtBuildNumberAddr: %#llx\n"
+                                  "KernBase: %#llx\n"
+                                  "Arch: %s\n"
+                                  "...\n",  // This is the end of a YAML file.
+                                  time_buffer,
+                                  info->CR3.QuadPart,
+                                  info->NtBuildNumber.QuadPart,
+                                  info->NtBuildNumberAddr.QuadPart,
+                                  info->KernBase.QuadPart,
+                                  arch
+                                  );
+
 }
 
 
-__int64 WinPmem::extract_driver(TCHAR *driver_filename) 
+__int64 WinPmem::extract_driver(TCHAR *driver_filename)
 {
-	set_driver_filename(driver_filename);
-	return extract_driver();
+        set_driver_filename(driver_filename);
+        return extract_driver();
 }
 
 
-__int64 WinPmem64::extract_driver() 
+__int64 WinPmem64::extract_driver()
 {
-	// 64 bit drivers use PTE acquisition by default.
-	default_mode_ = PMEM_MODE_PTE;
+        // 64 bit drivers use PTE acquisition by default.
+        default_mode_ = PMEM_MODE_PTE;
 
-	if (!driver_filename_) 
-	{
-		TCHAR path[MAX_PATH + 1];
-		TCHAR filename[MAX_PATH + 1];
+        if (!driver_filename_)
+        {
+                TCHAR path[MAX_PATH + 1];
+                TCHAR filename[MAX_PATH + 1];
 
-		// Gets the temp path env string (no guarantee it's a valid path).
-		if(!GetTempPath(MAX_PATH, path)) 
-		{
-			LogError(TEXT("Unable to determine temporary path."));
-			goto error;
-		}
+                // Gets the temp path env string (no guarantee it's a valid path).
+                if(!GetTempPath(MAX_PATH, path))
+                {
+                        LogError(TEXT("Unable to determine temporary path."));
+                        goto error;
+                }
 
-		GetTempFileName(path, service_name, 0, filename);
-		set_driver_filename(filename);
+                GetTempFileName(path, service_name, 0, filename);
+                set_driver_filename(filename);
 
-		driver_is_tempfile_ = true;
-	}
+                driver_is_tempfile_ = true;
+        }
 
-	Log(L"Extracting driver to %s\n", driver_filename_);
+        Log(L"Extracting driver to %s\n", driver_filename_);
 
-	return extract_file_(WINPMEM_64BIT_DRIVER, driver_filename_);
+        return extract_file_(WINPMEM_64BIT_DRIVER, driver_filename_);
 
 error:
-	return -1;
+        return -1;
 }
 
-__int64 WinPmem32::extract_driver() 
+__int64 WinPmem32::extract_driver()
 {
-	// 32 bit acquisition defaults to physical device.
-	default_mode_ = PMEM_MODE_PHYSICAL;
+        // 32 bit acquisition defaults to physical device.
+        default_mode_ = PMEM_MODE_PHYSICAL;
 
-	if (!driver_filename_) 
-	{
-		TCHAR path[MAX_PATH + 1];
-		TCHAR filename[MAX_PATH + 1];
+        if (!driver_filename_)
+        {
+                TCHAR path[MAX_PATH + 1];
+                TCHAR filename[MAX_PATH + 1];
 
-		// Gets the temp path env string (no guarantee it's a valid path).
-		if(!GetTempPath(MAX_PATH, path)) 
-		{
-			LogError(TEXT("Unable to determine temporary path."));
-			goto error;
-		}
+                // Gets the temp path env string (no guarantee it's a valid path).
+                if(!GetTempPath(MAX_PATH, path))
+                {
+                        LogError(TEXT("Unable to determine temporary path."));
+                        goto error;
+                }
 
-		GetTempFileName(path, service_name, 0, filename);
-		Log(L"extract_driver\n");
-		Log(L" - service_name: %s\n", service_name);
-		Log(L" - filename: %s\n", filename);
-		set_driver_filename(filename);
+                GetTempFileName(path, service_name, 0, filename);
+                Log(L"extract_driver\n");
+                Log(L" - service_name: %s\n", service_name);
+                Log(L" - filename: %s\n", filename);
+                set_driver_filename(filename);
 
-		driver_is_tempfile_ = true;
-	}
+                driver_is_tempfile_ = true;
+        }
 
-	Log(L" - Extracting driver to %s\n", driver_filename_);
+        Log(L" - Extracting driver to %s\n", driver_filename_);
 
-	return extract_file_(WINPMEM_32BIT_DRIVER, driver_filename_);
+        return extract_file_(WINPMEM_32BIT_DRIVER, driver_filename_);
 
 error:
-	return -1;
+        return -1;
 }
 
 
@@ -792,7 +854,7 @@ error:
 #endif
 
 
-// irghs! => 
+// irghs! =>
 
 char *asprintf(const char *fmt, ...) {
   /* Guess we need no more than 1000 bytes. */

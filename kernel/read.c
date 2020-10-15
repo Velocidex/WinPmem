@@ -67,7 +67,7 @@ ULONG PhysicalMemoryPartialRead(IN PDEVICE_EXTENSION extension,
 
 	if (!(openPhysMemSectionHandle(extension)))
 	{
-		DbgPrint("Error: physical device handle not available!\n");
+		DbgPrint("Error: physical device handle not available!\n"); // real error
 		return 0;
 	}
 		
@@ -76,9 +76,9 @@ ULONG PhysicalMemoryPartialRead(IN PDEVICE_EXTENSION extension,
 				  &mapped_buffer, 0L, PAGE_SIZE, &offset,
 				  &ViewSize, ViewUnmap, 0, PAGE_READONLY);
 				  
-	if (NtStatus != STATUS_SUCCESS)
+	if ((NtStatus != STATUS_SUCCESS) || (!mapped_buffer))
 	{
-		DbgPrint("Error: ZwMapViewOfSection failed. Offset 0x%llX, status %08x.\n", offset.QuadPart,NtStatus);
+		DbgPrint("Error: ZwMapViewOfSection failed. Offset 0x%llX, status %08x.\n", offset.QuadPart,NtStatus); // real error
 		return 0;
 	}
 	
@@ -98,7 +98,7 @@ ULONG PhysicalMemoryPartialRead(IN PDEVICE_EXTENSION extension,
 	// The approach: we very carefully check if it's readable and if yes, we return the bytes. 
 	// Otherwise we are already prepared to return zeros instead.
 	
-	try
+	try // Hyper-v/VSM induced possible read error
 	{
 		// "be super extra careful here." 
 		RtlCopyMemory(buf, mapped_buffer + page_offset, to_read);  // ProbeForRead would not help here. This is kernel VA already. We must face the fact that we might fail the read.
@@ -107,9 +107,10 @@ ULONG PhysicalMemoryPartialRead(IN PDEVICE_EXTENSION extension,
 	} 
 	except(EXCEPTION_EXECUTE_HANDLER)
 	{
-		RtlZeroMemory(buf, to_read); // return zeros instead
-		DbgPrint("Warning: unable to read %d bytes from %p, doing padding instead.\n", to_read, mapped_buffer+page_offset);
-		result = to_read;
+		// RtlZeroMemory(buf, to_read); // return zeros instead
+		DbgPrint("Error (VSM read error): unable to read %d bytes from %p, doing padding instead.\n", to_read, mapped_buffer+page_offset);
+		return 0;
+		// result = to_read;
 	}
 
 	return result;
@@ -141,7 +142,7 @@ static ULONG MapIOPagePartialRead(IN PDEVICE_EXTENSION extension,
 	// The approach: we very carefully check if it's readable and if yes, we return the bytes. 
 	// Otherwise we are already prepared to return zeros instead.
 
-	try 
+	try // Hyper-v/VSM induced possible read error
 	{
 		// "be super extra careful here." 
 		
@@ -157,16 +158,18 @@ static ULONG MapIOPagePartialRead(IN PDEVICE_EXTENSION extension,
 		}
 		else
 		{
-			RtlZeroMemory(buf, to_read); // return zeros instead
-			DbgPrint("Warning: unable to read %d bytes from %p, doing padding instead.\n", to_read, mapped_buffer+page_offset);
-			result = to_read;
+			// RtlZeroMemory(buf, to_read); // return zeros instead
+			DbgPrint("Error: unable to read %d bytes from %p, doing padding instead.\n", to_read, mapped_buffer+page_offset); // real error
+			return 0;
+			// result = to_read;
 		}
 	}
 	except(EXCEPTION_EXECUTE_HANDLER)
 	{
-		RtlZeroMemory(buf, to_read); // return zeros instead
-		DbgPrint("Warning: unable to read %d bytes from %p, doing padding instead.\n", to_read, mapped_buffer+page_offset);
-		result = to_read;
+		// RtlZeroMemory(buf, to_read); // return zeros instead
+		DbgPrint("Error (VSM read error): unable to read %d bytes from %p, doing padding instead.\n", to_read, mapped_buffer+page_offset);
+		return 0;
+		// result = to_read;
 		// No unmapping of the buffer: it did not go well.
 	}
 	
@@ -203,7 +206,7 @@ static ULONG PTEMmapPartialRead(IN PDEVICE_EXTENSION extension,
 		// The approach: we very carefully check if it's readable and if yes, we return the bytes. 
 		// Otherwise we are already prepared to return zeros instead.
 		
-		try 
+		try  // Hyper-v/VSM induced possible read error
 		{ // "be super extra careful here." 
 			
 			ProbeForRead( toxic_source, to_read, 1 ); // <= Does NOT really help, (but also does not harm),
@@ -219,9 +222,10 @@ static ULONG PTEMmapPartialRead(IN PDEVICE_EXTENSION extension,
 
 		} except(EXCEPTION_EXECUTE_HANDLER) 
 		{
-			RtlZeroMemory(buf, to_read); // return zeros instead
+			// RtlZeroMemory(buf, to_read); // return zeros instead
 			DbgPrint("Warning: unable to read %d bytes from %p for %p, doing padding instead.\n", to_read, toxic_source, offset.QuadPart - page_offset);
-			result = to_read;
+			return 0;
+			// result = to_read;
 		}
 	}
 	// Failed to map page, or an exception occured - error out.
@@ -247,7 +251,7 @@ NTSTATUS DeviceRead(IN PDEVICE_EXTENSION extension,
 
   *total_read = 0;
 
-  ExAcquireFastMutex(&extension->mu);
+  ExAcquireFastMutex(&extension->mu); // Don't forget to always free the Mutex!
   
   while (*total_read < howMuchToRead) 
   {
@@ -257,7 +261,8 @@ NTSTATUS DeviceRead(IN PDEVICE_EXTENSION extension,
 	mdl = IoAllocateMdl(toxic_buffer, current_read_window,  FALSE, TRUE, NULL); // <= toxic buffer address increases each time in the loop.
 	if (!mdl)
 	{
-		return STATUS_INSUFFICIENT_RESOURCES;
+		status = STATUS_INSUFFICIENT_RESOURCES;
+		goto end;
 	}
 	
 	try 
@@ -336,7 +341,7 @@ BOOLEAN pmemFastIoRead (
 	
 	extension = DeviceObject->DeviceExtension;
 	
-	if(KeGetCurrentIrql() != PASSIVE_LEVEL) // Does not happen.
+	if(KeGetCurrentIrql() != PASSIVE_LEVEL) // Does not happen. 
 	{
 		status = STATUS_SUCCESS;
 		goto bail_out;
@@ -387,7 +392,6 @@ BOOLEAN pmemFastIoRead (
 	{
 		status = GetExceptionCode();
 		DbgPrint("Error: 0x%08x, write-probe in pmemFastIoRead. Bad/nonexisting buffer.\n", status);
-		// Of course now we don't continue. 
 		goto bail_out;
 	}
 	
@@ -413,9 +417,8 @@ BOOLEAN pmemFastIoRead (
 	else
 	{
 		DbgPrint("Error: this acquisition mode is not supported!\n");
-		IoStatus->Status = STATUS_NOT_IMPLEMENTED;
-		IoStatus->Information = 0;
-		return TRUE;
+		status = STATUS_NOT_IMPLEMENTED;
+		goto bail_out;
 	}
 	
 	// Also check the return of Device Read. Do not simply return.
@@ -437,7 +440,7 @@ BOOLEAN pmemFastIoRead (
 	
 	IoStatus->Status = status;
 	IoStatus->Information = 0;
-	return FALSE;
+	return TRUE;
 	
 }
 
@@ -456,7 +459,7 @@ NTSTATUS PmemRead(IN PDEVICE_OBJECT  DeviceObject, IN PIRP  Irp)
 
 	PAGED_CODE();
 	
-	if(KeGetCurrentIrql() != PASSIVE_LEVEL) // Does not happen.
+	if(KeGetCurrentIrql() != PASSIVE_LEVEL) // Cannot happen (unless a malicious kernel driver sends us with evil intention, e.g., to kill us, a high IRQL package.)
 	{
 		status = STATUS_SUCCESS;
 		goto exit;
@@ -465,6 +468,7 @@ NTSTATUS PmemRead(IN PDEVICE_OBJECT  DeviceObject, IN PIRP  Irp)
 	extension = DeviceObject->DeviceExtension;
 
 	pIoStackIrp = IoGetCurrentIrpStackLocation(Irp);
+	pIoStackIrp->FileObject->PrivateCacheMap = (PVOID) -1;
 	BufLen = pIoStackIrp->Parameters.Read.Length;
 	BufOffset = pIoStackIrp->Parameters.Read.ByteOffset;
 	toxic_buffer =  Irp->UserBuffer; 
@@ -549,12 +553,7 @@ NTSTATUS PmemRead(IN PDEVICE_OBJECT  DeviceObject, IN PIRP  Irp)
 	{
 		DbgPrint("This acquisition mode is not supported!\n");
 		status = STATUS_NOT_IMPLEMENTED;
-		BufLen = 0;
-	}
-	
-	if (status == STATUS_SUCCESS)
-	{
-		pIoStackIrp->FileObject->PrivateCacheMap = (PVOID) -1;
+		total_read = 0;
 	}
 
 	exit:
@@ -582,12 +581,14 @@ NTSTATUS PmemWrite(IN PDEVICE_OBJECT  DeviceObject, IN PIRP  Irp)
 	PUCHAR mapped_buffer = NULL;
 	ULONG page_offset = 0;
 	LARGE_INTEGER offset;
+	ULONG written = 0;
 
 	PAGED_CODE();
 	
-	if (KeGetCurrentIrql() != PASSIVE_LEVEL) 
+	if (KeGetCurrentIrql() != PASSIVE_LEVEL) // Cannot happen (unless a malicious kernel driver sends us with evil intention, e.g., to kill us, a high IRQL package.)
 	{
 		status = STATUS_SUCCESS;
+		written = 0;
 		goto exit;
 	}
 
@@ -595,8 +596,9 @@ NTSTATUS PmemWrite(IN PDEVICE_OBJECT  DeviceObject, IN PIRP  Irp)
 
 	if (!extension->WriteEnabled) 
 	{
+		DbgPrint("Error (write): access denied -- write mode not enabled.\n");
+		written = 0;
 		status = STATUS_ACCESS_DENIED;
-		WinDbgPrint("Write mode not enabled.\n");
 		goto exit;
 	}
 
@@ -617,15 +619,17 @@ NTSTATUS PmemWrite(IN PDEVICE_OBJECT  DeviceObject, IN PIRP  Irp)
 	
 	if (!(toxic_buffer))
 	{
-		DbgPrint("error: provided buffer in write request was invalid.\n");
+		DbgPrint("Error (write): provided buffer in write request was invalid.\n");
+		written = 0;
 		status = STATUS_INVALID_PARAMETER;
 		goto exit;
 	}
 	
 	if (BufLen > PAGE_SIZE)
 	{
-		DbgPrint("Currently not implemented: the caller wants to write more than a PAGE_SIZE!\n");
+		DbgPrint("Error (write): Currently not implemented: the caller wants to write more than a PAGE_SIZE!\n");
 		// Currently: 
+		written = 0;
 		status = STATUS_NOT_IMPLEMENTED;
 		goto exit;
 	}
@@ -634,12 +638,11 @@ NTSTATUS PmemWrite(IN PDEVICE_OBJECT  DeviceObject, IN PIRP  Irp)
 	
 	if (!(BufLen))
 	{
-		DbgPrint("Complain: the caller  wants to write less than one byte.\n");
+		DbgPrint("Error (write): invalid request -- the caller wants to write less than one byte.\n");
+		written = 0;
 		status = STATUS_INVALID_PARAMETER;
 		goto exit;
 	}
-	
-	// xxx: might look into ntstatus.h for a nicer NTSTATUS code.
 	
 	// Now check if the usermode program spoke the truth.
 	try 
@@ -651,10 +654,9 @@ NTSTATUS PmemWrite(IN PDEVICE_OBJECT  DeviceObject, IN PIRP  Irp)
 	{
 
 		status = GetExceptionCode();
-		DbgPrint("Error: 0x%08x, probe in PmemWrite. A naughty process sent us a bad/nonexisting buffer.\n", status);
-		// Of course now we don't continue. 
-		
-		status = STATUS_SUCCESS; // to the I/O manager: everything's under control. Nothing to see.
+		DbgPrint("Error (write): status 0x%08x. Write probe failed: A naughty process sent us a bad/nonexisting buffer.\n", status);
+		written = 0;
+		status = STATUS_INVALID_PARAMETER;
 		goto exit;
 	}
 	
@@ -668,26 +670,54 @@ NTSTATUS PmemWrite(IN PDEVICE_OBJECT  DeviceObject, IN PIRP  Irp)
 	// How much we need to write rounded up to the next page.
 	ViewSize = BufLen + page_offset;
 	ViewSize += PAGE_SIZE - (ViewSize % PAGE_SIZE);
-
-	/* Map memory into the Kernel AS */
-	if (openPhysMemSectionHandle(extension))
-	{ 
-		status = ZwMapViewOfSection(extension->MemoryHandle, (HANDLE) -1,
-				&mapped_buffer, 0L, PAGE_SIZE, &offset,
-				&ViewSize, ViewUnmap, 0, PAGE_READWRITE);
-
-		if (NT_SUCCESS(status)) 
-		{
-		  RtlCopyMemory(mapped_buffer + page_offset, toxic_buffer, BufLen);
-		  ZwUnmapViewOfSection((HANDLE)-1, mapped_buffer);
-		}
-		else 
-		{
-		  WinDbgPrint("Failed to map view %lld %ld (%ld).\n", offset, ViewSize, status);
-		}
+    
+	if (!(openPhysMemSectionHandle(extension)))
+	{
+		DbgPrint("Error (write): physical device handle not available!\n"); // real error
+		written = 0;
+		status = STATUS_IO_DEVICE_ERROR;
+		goto exit;
 	}
+	
+	
+	status = ZwMapViewOfSection(extension->MemoryHandle, (HANDLE) -1,
+			&mapped_buffer, 0L, PAGE_SIZE, &offset,
+			&ViewSize, ViewUnmap, 0, PAGE_READWRITE);
+			
+	((NtStatus != STATUS_SUCCESS) || (!mapped_buffer))
+	{
+		DbgPrint("Error (write): ZwMapViewOfSection failed, %lld %ld (%ld).\n", offset, ViewSize, status); // real error
+		written = 0;
+		status = STATUS_IO_DEVICE_ERROR;
+		goto exit;
+	}
+	
+	// =warning=
+	// On a Windows with Hyper-V layer/VSM  (or whatever you want to name it, for me it's simply the HV layer beneath the OS.)
+	// the host OS is above the Hyper-V layer. The HV (which is below the OS) can 
+	// and will block certain reads from certain memory locations if "it" does not want it.
+	// It is happening outside of the "OS". As a rather profane kernel driver, we must live with it 
+	// and be prepared to be unable to read from a memory location, without any "sane" reason. (like, "out of nothing")
+	// The approach: we very carefully check if it's readable and if yes, we return the bytes. 
+	// Otherwise we are already prepared to return zeros instead.
+
+	try // Hyper-v/VSM induced possible write error
+	{
+		// "be super extra careful here." 
+		RtlCopyMemory(mapped_buffer + page_offset, toxic_buffer, BufLen);
+		ZwUnmapViewOfSection((HANDLE)-1, mapped_buffer);
+	}
+	except(EXCEPTION_EXECUTE_HANDLER)
+	{
+		DbgPrint("Error (VSM write error.).\n");
+		status = STATUS_IO_DEVICE_ERROR;
+		written = 0;
+		goto exit;
+	}
+	
 
 	exit:
+	Irp->IoStatus.Information = written;
 	Irp->IoStatus.Status = status;
 	IoCompleteRequest(Irp, IO_NO_INCREMENT);
 
