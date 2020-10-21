@@ -1,5 +1,7 @@
 # The Winpmem memory acquisition driver and userspace.
 
+![alt text](site/figures/128x128/winpmem_with_eye.png "Winpmem -- a physical memory acquisition tool")
+
 Winpmem has been the default open source memory acquisition driver for
 windows for a long time. It used to live in the Rekall project, but
 has recently been separated into its own repository.
@@ -11,7 +13,7 @@ under the Apache License.
 
 ### Description
 
-Winpmem is a physical memory imager with the following features:
+Winpmem is a physical memory acquisition tool with the following features:
 
 - Open source
 
