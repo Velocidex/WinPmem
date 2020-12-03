@@ -1,8 +1,8 @@
-# The Winpmem memory acquisition driver and userspace.
+# The WinPmem memory acquisition driver and userspace.
 
-![alt text](site/figures/128x128/winpmem_with_eye.png "Winpmem -- a physical memory acquisition tool")
+![alt text](site/figures/128x128/winpmem_with_eye.png "WinPmem -- a physical memory acquisition tool")
 
-Winpmem has been the default open source memory acquisition driver for
+WinPmem has been the default open source memory acquisition driver for
 windows for a long time. It used to live in the Rekall project, but
 has recently been separated into its own repository.
 
@@ -13,13 +13,13 @@ under the Apache License.
 
 ### Description
 
-Winpmem is a physical memory acquisition tool with the following features:
+WinPmem is a physical memory acquisition tool with the following features:
 
 - Open source
 
 - Support for WinXP - Win 10, x86 + x64. The WDK7600 can be used to
   include WinXP support.
-  As default, the provided Winpmem executables will be compiled with WDK10,
+  As default, the provided WinPmem executables will be compiled with WDK10,
   supporting Win7 - Win10, and featuring more modern code.
 
 - Three different independent methods to create a memory dump.
@@ -32,19 +32,19 @@ Winpmem is a physical memory acquisition tool with the following features:
   (e.g. copy across network, hash etc), as well as run analysis on the live
   system (e.g. can be run directly on the device).
 
-The files in this directory (Including the winpmem sources and signed binaries),
+The files in this directory (Including the WinPmem sources and signed binaries),
 are available under the following license: Apache License, Version 2.0
 
 ### How to use
 
-There are two winpmem executables: winpmem_mini_x86.exe and winpmem_mini_x64.exe.
+There are two WinPmem executables: winpmem_mini_x86.exe and winpmem_mini_x64.exe.
 Both versions contain both drivers (32 and 64 bit versions).
 
 The mini in the binary name refers to this imager being a plain simple
 imager - it can only produce images in RAW format. In the past we
 release a WinPmem imager based on AFF4 but that one is yet to be updated to the new driver. Please let us know if you need the AFF4 based imager.
 
-### The Python acquitision tool winpmem.py
+### The Python acquisition tool winpmem.py
 
 The python program is currently under construction but works as a demonstration for how one can use the imager from Python.
 
@@ -73,7 +73,7 @@ The driver will be automatically unloaded after the image is acquired!
 Experimental write support
 --------------------------
 
-The winpmem source code supports writing to memory as well as reading.
+The WinPmem source code supports writing to memory as well as reading.
 This capability is a great learning tool since many rootkit hiding
 techniques can be emulated by writing to memory directly.
 
@@ -86,7 +86,7 @@ unsigned binaries (really self signed with a test certificate) can not
 load on a regular system due to them being test self signed, but you can
 allow the unsigned drivers to be loaded on a test system by issuing
 (see
-http://msdn.microsoft.com/en-us/library/windows/hardware/ff553484(v=vs.85).aspx):
+https://docs.microsoft.com/en-us/windows-hardware/drivers/install/the-testsigning-boot-configuration-option:
 
 `Bcdedit.exe -set TESTSIGNING ON`
 
