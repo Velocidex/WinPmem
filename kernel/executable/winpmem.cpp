@@ -37,6 +37,7 @@ __int64 WinPmem::pad(unsigned __int64 start, unsigned __int64 length)
 
         printf("pad\n");
         printf(" - length: 0x%llx\n", length);
+        fflush(stdout);
 
         while (length > 0) {
                 DWORD to_write = (DWORD)min((BUFF_SIZE), length);
@@ -156,6 +157,7 @@ __int64 WinPmem::copy_memory(unsigned __int64 start, unsigned __int64 end) {
         printf("\ncopy_memory\n");
         printf(" - start: 0x%llx\n", start);
         printf(" - end: 0x%llx\n", end);
+        fflush(stdout);
 
         while(start < end)
         {
@@ -397,7 +399,7 @@ __int64 WinPmem::write_raw_image()
         #endif
 
         print_memory_info(&info);
-
+        fflush(stdout);
 
         // write ranges and pass non ranges
 
@@ -409,10 +411,11 @@ __int64 WinPmem::write_raw_image()
                 {
                         // pad zeros from current until begin of next RAM memory region.
                   printf("Padding from 0x%08llX to 0x%08llX\n", current, info.Run[i].BaseAddress.QuadPart);
-
+                  fflush(stdout);
                   if (!pad(current, info.Run[i].BaseAddress.QuadPart - current))
                   {
                         printf("padding went terribly wrong! Cancelling & terminating. \n");
+                        fflush(stdout);
                         goto exit;
                   }
                 }
@@ -435,7 +438,7 @@ __int64 WinPmem::write_raw_image()
 
         GetSystemTime(&st);
         printf("The system time is: %02d:%02d:%02d\n", st.wHour, st.wMinute, st.wSecond);
-
+        fflush(stdout);
         return status;
 }
 
@@ -480,6 +483,7 @@ void WinPmem::LogError(TCHAR *message)
   if (suppress_output) return;
 
   wprintf(L"%s", message);
+  fflush(stdout);
 }
 
 void WinPmem::Log(const TCHAR *message, ...)
@@ -490,6 +494,7 @@ void WinPmem::Log(const TCHAR *message, ...)
   va_start(ap, message);
   vwprintf(message, ap);
   va_end(ap);
+  fflush(stdout);
 }
 
 
@@ -643,6 +648,7 @@ __int64 WinPmem::install_driver()
                 if (le != ERROR_SERVICE_ALREADY_RUNNING)
                 {
                   printf("Error (0x%lx): StartService(), Cannot start the driver.\n", le);
+                  fflush(stdout);
                   LogError(TEXT("Error: StartService(), Cannot start the driver.\n"));
                   goto service_error;
                 }
