@@ -363,6 +363,7 @@ __int64 WinPmem::write_raw_image()
         __int64 i;
         __int64 status = -1;
         SYSTEMTIME st, lt;
+        BYTE infoBuffer[sizeof(WINPMEM_MEMORY_INFO) + sizeof(LARGE_INTEGER) * 32] = { 0 };
 
         if(out_fd_==INVALID_HANDLE_VALUE)
         {
@@ -375,7 +376,7 @@ __int64 WinPmem::write_raw_image()
         // Get the memory ranges.
         result = DeviceIoControl(fd_, IOCTL_GET_INFO,
                                                 NULL, 0, // in
-                                                (char *)&info, sizeof(WINPMEM_MEMORY_INFO), // out
+                                                (char *)&infoBuffer, sizeof(infoBuffer), // out
                                                 &size, NULL);
 
         if (!(result))
@@ -384,7 +385,29 @@ __int64 WinPmem::write_raw_image()
                 status = -1;
                 goto exit;
         }
+#ifdef _WIN64
+        RtlCopyMemory(&info, infoBuffer, sizeof(WINPMEM_MEMORY_INFO));
+#else
+        {
+            SYSTEM_INFO sys_info = { 0 };
 
+            GetNativeSystemInfo(&sys_info);
+
+            switch (sys_info.wProcessorArchitecture)
+            {
+                case PROCESSOR_ARCHITECTURE_AMD64:
+                {
+                    DWORD dwOffset = FIELD_OFFSET(WINPMEM_MEMORY_INFO, PfnDataBase);
+                    RtlCopyMemory(&info, infoBuffer, dwOffset);
+                    RtlCopyMemory(&info.PfnDataBase, infoBuffer + dwOffset + 32 * sizeof(LARGE_INTEGER), sizeof(WINPMEM_MEMORY_INFO) - dwOffset);
+                    break;
+                }
+                default:
+                    RtlCopyMemory(&info, infoBuffer, sizeof(WINPMEM_MEMORY_INFO));
+                    break;
+            }
+        }
+#endif
 
         GetSystemTime(&st);
         printf("The system time is: %02d:%02d:%02d\n", st.wHour, st.wMinute, st.wSecond);
