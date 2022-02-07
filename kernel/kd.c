@@ -50,10 +50,10 @@ SIZE_T KernelGetModuleBaseByPtr()
 	if (( status == STATUS_INFO_LENGTH_MISMATCH ) || (status == STATUS_BUFFER_OVERFLOW))
 	{
 		ExFreePool( pBuffer );
-        if( pBuffer == NULL )
-        {
-            return 0;
-        }
+        	if( pBuffer == NULL )
+        	{
+            		return 0;
+        	}
 		pBuffer = ExAllocatePoolWithTag( NonPagedPool, NeedSize , PMEM_POOL_TAG );
 		status = ZwQuerySystemInformation( SystemModuleInformation, pBuffer, NeedSize, &NeedSize );
 	}
@@ -71,26 +71,26 @@ SIZE_T KernelGetModuleBaseByPtr()
 
 	for( i = 0; i < ModuleCount; i++ )
 	{
-			for (j=0;j<250;j++)
-			{
-				// There are so many names for NT kernels: ntoskrnl, ntkrpamp, ...
-				if (
-						((pSystemModuleInformation->Module[i].ImageName[j+0] | 0x20) == 'n') &&
-						((pSystemModuleInformation->Module[i].ImageName[j+1] | 0x20) == 't') &&
-					
-						(((pSystemModuleInformation->Module[i].ImageName[j+2] | 0x20) == 'o') &&
-						((pSystemModuleInformation->Module[i].ImageName[j+3] | 0x20) == 's'))
-						||
-						(((pSystemModuleInformation->Module[i].ImageName[j+2] | 0x20) == 'k') &&
-						((pSystemModuleInformation->Module[i].ImageName[j+3] | 0x20) == 'r'))
-					) // end of nt kernel name check.
-					{
-						imagebase_of_nt = (SIZE_T) pSystemModuleInformation->Module[i].Base;
-						ExFreePool( pBuffer );
-						return imagebase_of_nt;
-					}
-					
-			}
+		for (j=0;j<250;j++)
+		{
+			// There are so many names for NT kernels: ntoskrnl, ntkrpamp, ...
+			if (
+					((pSystemModuleInformation->Module[i].ImageName[j+0] | 0x20) == 'n') &&
+					((pSystemModuleInformation->Module[i].ImageName[j+1] | 0x20) == 't') &&
+
+					(((pSystemModuleInformation->Module[i].ImageName[j+2] | 0x20) == 'o') &&
+					((pSystemModuleInformation->Module[i].ImageName[j+3] | 0x20) == 's'))
+					||
+					(((pSystemModuleInformation->Module[i].ImageName[j+2] | 0x20) == 'k') &&
+					((pSystemModuleInformation->Module[i].ImageName[j+3] | 0x20) == 'r'))
+				) // end of nt kernel name check.
+				{
+					imagebase_of_nt = (SIZE_T) pSystemModuleInformation->Module[i].Base;
+					ExFreePool( pBuffer );
+					return imagebase_of_nt;
+				}
+
+		}
 	}
 
 	ExFreePool(pBuffer);
