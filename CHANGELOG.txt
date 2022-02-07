@@ -1,5 +1,24 @@
+7. Feb 2022
 
-6.10.2020
+* Fixes in KernelGetModuleBaseByPtr: on successfull return the buffer is not freed. This is a memory leak, but happens only one time (1).
+Second, added a buffer check in KernelGetModuleBaseByPtr (2), and third, removed an unneeded checking in the for loop (3), which PREfast marked as nonsense check.
+Impact:
+For (1), the allocated memory loss is a one-time loss.
+For (2), the added check is only of importance for clean code conduct. An allocation of such a size is always successfull unless the OS is dying, in which case we are screwed no matter what we do. 
+For (3), checking a field of char[256] in the middle of a flat buffer only wastes time and makes no sense.
+
+* Memory leak fix in kernelmode winpmem.c line 118: `if (number_of_runs > NUMBER_OF_RUNS) return STATUS_INFO_LENGTH_MISMATCH;` 
+The memory allocated from `MmPhysicalMemoryRange = MmGetPhysicalMemoryRanges();` is not freed in this error branch.
+Impact: some memory of varying size will be lost as often as the user launches a memory read ioctl. 
+
+* Recommendation 1: Collecting ntoskrnl base address and the KPCR info is historical artefact data and not used anymore. We should remove it for the sake of clean code and simplicity. Especially the KPCR info code causes various compability issues.
+
+* Recommendation 2: both methods MmMapToIoSpace and Device\\PhysicalMemory usage are deprecated. The second could be kept for 32 bit OS users, but the first one is a candidate for removal?
+
+
+============
+
+6. Oct 2020
 
 New features & major revision (see below).
 
@@ -45,11 +64,3 @@ Changes:
 
 * Updated author info (not changing the copyright).
 
-
-TODO/wishlist:
-
-* Nicer icon?
-
-* More tests.
-
-* Documentation updates?

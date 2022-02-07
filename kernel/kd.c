@@ -50,6 +50,10 @@ SIZE_T KernelGetModuleBaseByPtr()
 	if (( status == STATUS_INFO_LENGTH_MISMATCH ) || (status == STATUS_BUFFER_OVERFLOW))
 	{
 		ExFreePool( pBuffer );
+        if( pBuffer == NULL )
+        {
+            return 0;
+        }
 		pBuffer = ExAllocatePoolWithTag( NonPagedPool, NeedSize , PMEM_POOL_TAG );
 		status = ZwQuerySystemInformation( SystemModuleInformation, pBuffer, NeedSize, &NeedSize );
 	}
@@ -67,8 +71,6 @@ SIZE_T KernelGetModuleBaseByPtr()
 
 	for( i = 0; i < ModuleCount; i++ )
 	{
-		if (pSystemModuleInformation->Module[i].ImageName)
-		{
 			for (j=0;j<250;j++)
 			{
 				// There are so many names for NT kernels: ntoskrnl, ntkrpamp, ...
@@ -84,11 +86,11 @@ SIZE_T KernelGetModuleBaseByPtr()
 					) // end of nt kernel name check.
 					{
 						imagebase_of_nt = (SIZE_T) pSystemModuleInformation->Module[i].Base;
+						ExFreePool( pBuffer );
 						return imagebase_of_nt;
 					}
 					
-			}	
-		}
+			}
 	}
 
 	ExFreePool(pBuffer);
