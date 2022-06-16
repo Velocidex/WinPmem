@@ -115,7 +115,11 @@ NTSTATUS AddMemoryRanges(PWINPMEM_MEMORY_INFO info)
 	WinDbgPrint("Memory range runs found: %d.\n",number_of_runs);
 
   /* Do we have enough space? */
-  if (number_of_runs > NUMBER_OF_RUNS) return STATUS_INFO_LENGTH_MISMATCH;
+  if (number_of_runs > NUMBER_OF_RUNS) 
+    {
+        ExFreePool(MmPhysicalMemoryRange); // free the memory allocated by MmGetPhysicalMemoryRanges(), even in the error branches. There are multiple exit nodes here which is a bit dangerous.
+        return STATUS_INFO_LENGTH_MISMATCH;
+    }
 
   info->NumberOfRuns.QuadPart = number_of_runs;
   RtlCopyMemory(&info->Run[0], MmPhysicalMemoryRange, number_of_runs * sizeof(PHYSICAL_MEMORY_RANGE));
