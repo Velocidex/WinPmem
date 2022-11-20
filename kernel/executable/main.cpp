@@ -190,6 +190,7 @@ int _tmain(int argc, _TCHAR* argv[])
 		{
 			status = pmem_handle->write_raw_image();
         }
+		else status = -1;
 
         pmem_handle->uninstall_driver();
 

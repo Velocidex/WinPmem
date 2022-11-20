@@ -19,9 +19,9 @@
 #include "SystemModInfoInvocation.h"
 #include "winpmem.h"
 
-// xxx: returns nt module base address as variatic hex number (SIZE_T).
+// xxx: returns nt module base address.
 //      The perfect routine for PASSIVE_LEVEL drivers.
-SIZE_T KernelGetModuleBaseByPtr()
+ULONG_PTR KernelGetModuleBaseByPtr()
 {
 	NTSTATUS status = STATUS_SUCCESS;
 	
@@ -32,15 +32,15 @@ SIZE_T KernelGetModuleBaseByPtr()
 	ULONG preAllocateSize = 0x1000;
 	PVOID pBuffer = NULL;
 	
-	SIZE_T imagebase_of_nt = 0;
+	ULONG_PTR imagebase_of_nt = 0;
 	
 	PSYSTEM_MODULE_INFORMATION pSystemModuleInformation;
 	
 	PAGED_CODE();
 
 	// Preallocate 0x1000 bytes and try.
-	pBuffer = ExAllocatePoolWithTag( NonPagedPool, preAllocateSize, PMEM_POOL_TAG );
-	if( pBuffer == NULL )
+	pBuffer = ExAllocatePoolWithTag( NonPagedPoolNx, preAllocateSize, PMEM_POOL_TAG );
+	if (!pBuffer)
 	{
 		return 0;
 	}
@@ -50,11 +50,11 @@ SIZE_T KernelGetModuleBaseByPtr()
 	if (( status == STATUS_INFO_LENGTH_MISMATCH ) || (status == STATUS_BUFFER_OVERFLOW))
 	{
 		ExFreePool( pBuffer );
-        	if( pBuffer == NULL )
-        	{
-            		return 0;
-        	}
-		pBuffer = ExAllocatePoolWithTag( NonPagedPool, NeedSize , PMEM_POOL_TAG );
+		pBuffer = ExAllocatePoolWithTag( NonPagedPoolNx, NeedSize , PMEM_POOL_TAG );
+		if (!pBuffer)
+		{
+			return 0;
+		}
 		status = ZwQuerySystemInformation( SystemModuleInformation, pBuffer, NeedSize, &NeedSize );
 	}
    
@@ -65,7 +65,7 @@ SIZE_T KernelGetModuleBaseByPtr()
 		return 0;    
 	}
 
-	pSystemModuleInformation = (PSYSTEM_MODULE_INFORMATION)pBuffer;
+	pSystemModuleInformation = (PSYSTEM_MODULE_INFORMATION) pBuffer;
 
 	ModuleCount = pSystemModuleInformation->Count;
 
@@ -85,7 +85,7 @@ SIZE_T KernelGetModuleBaseByPtr()
 					((pSystemModuleInformation->Module[i].ImageName[j+3] | 0x20) == 'r'))
 				) // end of nt kernel name check.
 				{
-					imagebase_of_nt = (SIZE_T) pSystemModuleInformation->Module[i].Base;
+					imagebase_of_nt = (ULONG_PTR) pSystemModuleInformation->Module[i].Base;
 					ExFreePool( pBuffer );
 					return imagebase_of_nt;
 				}
@@ -97,99 +97,17 @@ SIZE_T KernelGetModuleBaseByPtr()
 	return 0;
 }
 
+// Enumerate the KPCR blocks from all CPUs.
 
-// xxx: get proc address for kernel space. Nice.
-// could support irql > 0.
-void *KernelGetProcAddress(void *image_base, char *func_name) {
-  void *func_address = NULL;
-
-  __try  {
-    int size = 0;
-    IMAGE_DOS_HEADER *dos =(IMAGE_DOS_HEADER *)image_base;
-    IMAGE_NT_HEADERS *nt  =(IMAGE_NT_HEADERS *)((uintptr_t)image_base + dos->e_lfanew);
-
-    IMAGE_DATA_DIRECTORY *expdir = (IMAGE_DATA_DIRECTORY *)
-      (nt->OptionalHeader.DataDirectory + IMAGE_DIRECTORY_ENTRY_EXPORT);
-
-    IMAGE_EXPORT_DIRECTORY *exports =(PIMAGE_EXPORT_DIRECTORY)
-      ((uintptr_t)image_base + expdir->VirtualAddress);
-
-    uintptr_t addr = (uintptr_t)exports-(uintptr_t)image_base;
-
-    // These are arrays of RVA addresses.
-    unsigned int *functions = (unsigned int *)((uintptr_t)image_base +
-                                               exports->AddressOfFunctions);
-
-    unsigned int *names = (unsigned int *)((uintptr_t)image_base +
-                                           exports->AddressOfNames);
-
-    short *ordinals = (short *)((uintptr_t)image_base +
-                                exports->AddressOfNameOrdinals);
-
-    unsigned int max_name  = exports->NumberOfNames;
-    unsigned int  max_func  = exports->NumberOfFunctions;
-
-    unsigned int i;
-
-    for (i = 0; i < max_name; i++) {
-      unsigned int ord = ordinals[i];
-      if(i >= max_name || ord >= max_func) {
-        return NULL;
-      }
-
-      if (functions[ord] < addr || functions[ord] >= addr + size) {
-        if (strcmp((char *)image_base + names[i], func_name)  == 0) {
-          func_address = (char *)image_base + functions[ord];
-          break;
-        }
-      }
-    }
-  }
-  __except(EXCEPTION_EXECUTE_HANDLER) {
-    func_address = NULL;
-  }
-
-  return func_address;
-} // end KernelGetProcAddress()
-
-
-/* Search for a section by name.
-
-   Returns the mapped virtual memory section or NULL if not found.
-   could support irql > 0.
-*/
-IMAGE_SECTION_HEADER* GetSection(IMAGE_DOS_HEADER *image_base, char *name) 
-{
-  IMAGE_NT_HEADERS *nt  = (IMAGE_NT_HEADERS *)
-    ((uintptr_t)image_base + image_base->e_lfanew);
-  int i;
-  int number_of_sections = nt->FileHeader.NumberOfSections;
-
-  IMAGE_SECTION_HEADER *sections = (IMAGE_SECTION_HEADER *)
-    ((uintptr_t)&nt->OptionalHeader + nt->FileHeader.SizeOfOptionalHeader);
-
-  for (i=0; i<number_of_sections; i++) {
-    if(!strcmp((char *)sections[i].Name, name))
-      return &sections[i];
-  };
-
-  return NULL;
-};
-
-
-/*
-  Enumerate the KPCR blocks from all CPUs.
-*/
-
-void GetKPCR(PWINPMEM_MEMORY_INFO info) 
+void GetKPCR(_Inout_ PWINPMEM_MEMORY_INFO info) 
 {
 	// a bitmask of the currently active processors
-	unsigned __int64 active_processors = KeQueryActiveProcessors();
-	unsigned __int64 i=0;
+	SIZE_T active_processors = KeQueryActiveProcessors();
+	SIZE_T i=0;
 	#if defined(_WIN64)
-	unsigned __int64 maxProcessors=64; // xxx: 64 processors possible on 64 bit os
+	SIZE_T maxProcessors=64; // xxx: 64 processors possible on 64 bit os
 	#else
-	unsigned __int64 maxProcessors=32;  // but only 32 on 32 bit, meaning that only half so much KPCR slots.
+	SIZE_T maxProcessors=32;  // but only 32 on 32 bit, meaning that only half so much KPCR slots.
 	#endif
 	SIZE_T one = 1; // xxx: for correct bitshifting depending on runtime OS bitness.
   
@@ -199,7 +117,7 @@ void GetKPCR(PWINPMEM_MEMORY_INFO info)
 
 	for (i=0; i<maxProcessors; i++) 
 	{
-		if (active_processors & (one << i)) 
+		if (active_processors & (one << i))
 		{
 		  KeSetSystemAffinityThread(one << i);
 		#if _WIN64
@@ -218,3 +136,7 @@ void GetKPCR(PWINPMEM_MEMORY_INFO info)
 
 	return;
 }
+
+
+
+

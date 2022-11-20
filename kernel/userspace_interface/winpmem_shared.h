@@ -4,7 +4,7 @@
 // Contains all the data shared between the driver and the usermode part.
 
 
-#define PMEM_DRIVER_VERSION "2.0.1"
+#define PMEM_DRIVER_VERSION "2.0.2"
 #define PMEM_DEVICE_NAME_ASCII "pmem"  // the name for normal userspace usage.
 #define PMEM_DEVICE_NAME L"pmem"       // preferred by the driver.
 #define PMEM_SERVICE_NAME TEXT("pmem") // and this is finally the service name.

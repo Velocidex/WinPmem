@@ -18,17 +18,11 @@
       <Platform>x64</Platform>
     </ProjectConfiguration>
   </ItemGroup>
+  
   <ItemGroup>
     <None Include="ReadMe.txt" />
   </ItemGroup>
-  <ItemGroup>
-    <ClCompile Include="kd.c" />
-    <ClCompile Include="pci.c" />
-    <ClCompile Include="pte_mmap.c" />
-    <ClCompile Include="pte_mmap_windows.c" />
-    <ClCompile Include="read.c" />
-    <ClCompile Include="winpmem.c" />
-  </ItemGroup>
+  
   <PropertyGroup Label="Globals">
     <ProjectGuid>{8BAC86C0-A3EA-4652-92BF-C51C0DF5D86C}</ProjectGuid>
     <TemplateGuid>{8c0e3d8b-df43-455b-815a-4a0e72973bc6}</TemplateGuid>
@@ -99,61 +93,101 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
   </PropertyGroup>
+  
+	<ItemGroup>
+		<ClCompile Include="winpmem.c" />
+		<MessageCompile Include="log_message.mc" />
+		<ResourceCompile Include="log_message.rc" />
+	</ItemGroup>
+  
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
       <WppEnabled>true</WppEnabled>
       <WppRecorderEnabled>true</WppRecorderEnabled>
       <WppKernelMode>true</WppKernelMode>
-      <TreatWarningAsError>false</TreatWarningAsError>
+	  <EnablePREfast>true</EnablePREfast>
+		<TreatWarningAsError>false</TreatWarningAsError>
+		<WarningLevel>Level4</WarningLevel>
+		<IntrinsicFunctions>true</IntrinsicFunctions>
       <SupportJustMyCode>false</SupportJustMyCode>
     </ClCompile>
     <Link>
       <AdditionalDependencies>%(AdditionalDependencies);ntstrsafe.lib;wdmsec.lib</AdditionalDependencies>
+	  <LargeAddressAware>true</LargeAddressAware>
+        <EntryPointSymbol>DriverEntry</EntryPointSymbol>
+        <RandomizedBaseAddress>true</RandomizedBaseAddress>
+        <DataExecutionPrevention>true</DataExecutionPrevention>
     </Link>
   </ItemDefinitionGroup>
+  
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
       <WppEnabled>true</WppEnabled>
       <WppRecorderEnabled>true</WppRecorderEnabled>
       <WppKernelMode>true</WppKernelMode>
-      <TreatWarningAsError>false</TreatWarningAsError>
+	  <EnablePREfast>true</EnablePREfast>
+		<TreatWarningAsError>false</TreatWarningAsError>
+		<WarningLevel>Level4</WarningLevel>
+		<IntrinsicFunctions>true</IntrinsicFunctions>
     </ClCompile>
     <Link>
       <AdditionalDependencies>%(AdditionalDependencies);ntstrsafe.lib;wdmsec.lib</AdditionalDependencies>
+	  <LargeAddressAware>true</LargeAddressAware>
+        <EntryPointSymbol>DriverEntry</EntryPointSymbol>
+        <RandomizedBaseAddress>true</RandomizedBaseAddress>
+        <DataExecutionPrevention>true</DataExecutionPrevention>
     </Link>
   </ItemDefinitionGroup>
+  
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
       <WppEnabled>true</WppEnabled>
       <WppRecorderEnabled>true</WppRecorderEnabled>
       <WppKernelMode>true</WppKernelMode>
-      <TreatWarningAsError>false</TreatWarningAsError>
+	  <EnablePREfast>true</EnablePREfast>
+		<TreatWarningAsError>false</TreatWarningAsError>
+		<WarningLevel>Level4</WarningLevel>
+		<IntrinsicFunctions>true</IntrinsicFunctions>
       <SupportJustMyCode>false</SupportJustMyCode>
       <LanguageStandard>stdcpp14</LanguageStandard>
     </ClCompile>
     <Link>
       <AdditionalDependencies>%(AdditionalDependencies);ntstrsafe.lib;wdmsec.lib</AdditionalDependencies>
+	  <LargeAddressAware>true</LargeAddressAware>
+        <EntryPointSymbol>DriverEntry</EntryPointSymbol>
+        <RandomizedBaseAddress>true</RandomizedBaseAddress>
+        <DataExecutionPrevention>true</DataExecutionPrevention>
     </Link>
   </ItemDefinitionGroup>
+  
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
       <WppEnabled>true</WppEnabled>
       <WppRecorderEnabled>true</WppRecorderEnabled>
       <WppKernelMode>true</WppKernelMode>
-      <TreatWarningAsError>false</TreatWarningAsError>
+	  <EnablePREfast>true</EnablePREfast>
+		<TreatWarningAsError>false</TreatWarningAsError>
+		<WarningLevel>Level4</WarningLevel>
+		<IntrinsicFunctions>true</IntrinsicFunctions>
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
       <LanguageStandard>stdcpp14</LanguageStandard>
     </ClCompile>
     <Link>
       <AdditionalDependencies>%(AdditionalDependencies);ntstrsafe.lib;wdmsec.lib</AdditionalDependencies>
+	  <LargeAddressAware>true</LargeAddressAware>
+        <EntryPointSymbol>DriverEntry</EntryPointSymbol>
+        <RandomizedBaseAddress>true</RandomizedBaseAddress>
+        <DataExecutionPrevention>true</DataExecutionPrevention>
     </Link>
   </ItemDefinitionGroup>
+  
   <ItemGroup>
     <FilesToPackage Include="$(TargetPath)" />
   </ItemGroup>
+  
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
-  <ImportGroup Label="ExtensionTargets">
-  </ImportGroup>
+  
+  
 
 	<Target Name="DisplayMessages" AfterTargets="Build">
 		<Message Text="Project Name = $(MSBuildProjectName)" />

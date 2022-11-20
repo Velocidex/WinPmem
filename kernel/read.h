@@ -22,10 +22,11 @@
 
 #include "winpmem.h"
 
-/* Read a page through the PhysicalMemory device. */
-ULONG PhysicalMemoryPartialRead(IN PDEVICE_EXTENSION extension, LARGE_INTEGER offset, unsigned char * buf, ULONG count);
+_IRQL_requires_max_(PASSIVE_LEVEL) 
+	BOOLEAN setupPhysMemSectionHandle(_Out_ PHANDLE pMemoryHandle);
 
-BOOLEAN pmemFastIoRead (
+_IRQL_requires_max_(PASSIVE_LEVEL) 
+	BOOLEAN pmemFastIoRead (
     __in PFILE_OBJECT FileObject,
     __in PLARGE_INTEGER BufOffset,
     __in ULONG BufLen,
@@ -35,31 +36,39 @@ BOOLEAN pmemFastIoRead (
     __out PIO_STATUS_BLOCK IoStatus,
     __in PDEVICE_OBJECT DeviceObject );
 
-NTSTATUS DeviceRead(	IN PDEVICE_EXTENSION extension, 
-						LARGE_INTEGER offset,
-						unsigned char * toxic_buffer, ULONG howMuchToRead, 
-						OUT ULONG *total_read,
-						ULONG (*handler)(IN PDEVICE_EXTENSION, LARGE_INTEGER, unsigned char *, ULONG)
-                    );
+_IRQL_requires_max_(PASSIVE_LEVEL) 
+	__drv_dispatchType(IRP_MJ_READ) DRIVER_DISPATCH PmemRead;
 
+_IRQL_requires_max_(PASSIVE_LEVEL) 
+	__drv_dispatchType(IRP_MJ_WRITE) DRIVER_DISPATCH PmemWrite;
 
-/* Actual read handler. */
-__drv_dispatchType(IRP_MJ_READ) DRIVER_DISPATCH PmemRead;
+_IRQL_requires_max_(APC_LEVEL)
+	NTSTATUS DeviceRead(_In_ PDEVICE_EXTENSION extension, 
+					_In_ LARGE_INTEGER physAddr_cursor,
+                    _Inout_ unsigned char * toxic_buffer_cursor, _In_ ULONG howMuchToRead, 
+					_Out_ PULONG total_read);
 
-NTSTATUS PmemRead(IN PDEVICE_OBJECT  DeviceObject, IN PIRP  Irp);
+_IRQL_requires_max_(PASSIVE_LEVEL) 
+	ULONG PhysicalMemoryPartialRead(_In_ HANDLE memoryHandle, _In_ LARGE_INTEGER physAddr, _Inout_ unsigned char * buf, _In_ ULONG count);
 
-__drv_dispatchType(IRP_MJ_WRITE) DRIVER_DISPATCH PmemWrite;
+// Capable of working higher than PASSIVE level, but not needed.
+ULONG MapIOPagePartialRead(_In_ LARGE_INTEGER physAddr, _Inout_ unsigned char * buf, _In_ ULONG count);
+	
+_IRQL_requires_max_(APC_LEVEL) 
+	ULONG PTEMmapPartialRead(_Inout_ PPTE_METHOD_DATA pPtedata, _In_ LARGE_INTEGER physAddr, _Inout_ unsigned char * buf, _In_ ULONG count);
 
-NTSTATUS PmemWrite(IN PDEVICE_OBJECT  DeviceObject, IN PIRP  Irp);
 
 #ifdef ALLOC_PRAGMA
-
-#pragma alloc_text( PAGE , PhysicalMemoryPartialRead )
+#pragma alloc_text( PAGE , setupPhysMemSectionHandle ) 
 #pragma alloc_text( PAGE , pmemFastIoRead ) 
-#pragma alloc_text( PAGE , DeviceRead ) 
 #pragma alloc_text( PAGE , PmemRead ) 
 #pragma alloc_text( PAGE , PmemWrite ) 
-
+#pragma alloc_text( NONPAGED , DeviceRead ) 
+#pragma alloc_text( NONPAGED , PhysicalMemoryPartialRead )
+#pragma alloc_text( NONPAGED , MapIOPagePartialRead ) 
+#pragma alloc_text( NONPAGED , PTEMmapPartialRead ) 
 #endif
+
+// The very often called routines should be in nonpaged memory, it would waste time if they were paged out.
 
 #endif

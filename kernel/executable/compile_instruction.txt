@@ -1,0 +1,13 @@
+Place your compiled driver binaries in "binaries" folder with these names:
+
+1) "winpmem_x64.sys" 
+2) "winpmem_x86.sys" 
+
+Then compile the usermode ("mini tool") executable. The executable will then contain both driver files after compilation.
+
+You can also edit the winpmem.rc to use the old icon.
+
+Don't forget 
+* bcdedit /set testsigning on & reboot
+* memory compression off for Volatility(?)
+

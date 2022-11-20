@@ -1,11 +1,12 @@
 // Directly manipulates the page tables to map physical memory into the kernel.
-// Notice: This is only an abstract base class and cannot be used standalone.
-// Use the actual implementation for your operating system (eg. pte_mmap_linux).
+// Contains everything for accessing physical memory content by direct use of PTE's.
 //
 // Copyright 2018 Velocidex Innovations <mike@velocidex.com>
 // Copyright 2014 - 2017 Google Inc.
 // Copyright 2012 Google Inc. All Rights Reserved.
-// Author: Johannes Stüttgen (johannes.stuettgen@gmail.com)
+// Authors: Johannes Stüttgen (johannes.stuettgen@gmail.com)
+//          Michael Cohen <mike@velocidex.com>
+//          Viviane Zwanger
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,165 +23,164 @@
 #ifndef _PTE_MMAP_H_
 #define _PTE_MMAP_H_
 
+#if defined(_WIN64)
+
+// Section for PTE remapping maneuvers. Fulfills special requirements.
+#pragma section(".roguepage",read,write,nopage)
+
+#endif
+
+
 #define PAGE_MASK (~(PAGE_SIZE-1))
 
 #define PFN_TO_PAGE(pfn) (pfn << PAGE_SHIFT)
 #define PAGE_TO_PFN(pfn) (pfn >> PAGE_SHIFT)
- 
-typedef unsigned __int64 pte_uint64;
 
-#pragma warning(disable:4214) 
-#pragma warning(disable:4201)  /*nonstandard extension used: nameless struct/union */
+#if defined(_WIN64)
+
+__declspec(allocate(".roguepage")) unsigned char ROGUE_PAGE_MAGICMARKER[] = "GiveSectionToWinpmem=1\n";  
+// This needed to make PTE method work. ;-)
+
+#endif
+
+
+typedef union _VIRT_ADDR
+{
+  unsigned __int64 value;
+  void * pointer;
+  struct {
+    unsigned __int64 offset        : 12;
+    unsigned __int64 pt_index      :  9;
+    unsigned __int64 pd_index      :  9;
+    unsigned __int64 pdpt_index    :  9;
+    unsigned __int64 pml4_index    :  9;
+    unsigned __int64 reserved      : 16;
+  };
+} VIRT_ADDR, *PVIRT_ADDR;
+
+typedef unsigned __int64 PHYS_ADDR;
+
 
 #pragma pack(push, 1)
-typedef union CR3_ {
-  pte_uint64 value;
+typedef union _CR3
+{
+  unsigned __int64 value;
   struct {
-    pte_uint64 ignored_1     : 3;
-    pte_uint64 write_through : 1;
-    pte_uint64 cache_disable : 1;
-    pte_uint64 ignored_2     : 7;
-    pte_uint64 pml4_p        :40;
-    pte_uint64 reserved      :12;
+    unsigned __int64 ignored_1     : 3;
+    unsigned __int64 write_through : 1;
+    unsigned __int64 cache_disable : 1;
+    unsigned __int64 ignored_2     : 7;
+    unsigned __int64 pml4_p        :40;
+    unsigned __int64 reserved      :12;
   };
-} PTE_CR3;
+} CR3, *PCR3;
 
-typedef union VIRT_ADDR_ {
-  pte_uint64 value;
-  void *pointer;
+typedef union _PML4E
+{
+  unsigned __int64 value;
   struct {
-    pte_uint64 offset        : 12;
-    pte_uint64 pt_index      :  9;
-    pte_uint64 pd_index      :  9;
-    pte_uint64 pdpt_index    :  9;
-    pte_uint64 pml4_index    :  9;
-    pte_uint64 reserved      : 16;
+    unsigned __int64 present        : 1;
+    unsigned __int64 rw             : 1;
+    unsigned __int64 user           : 1;
+    unsigned __int64 write_through  : 1;
+    unsigned __int64 cache_disable  : 1;
+    unsigned __int64 accessed       : 1;
+    unsigned __int64 ignored_1      : 1;
+    unsigned __int64 reserved_1     : 1;
+    unsigned __int64 ignored_2      : 4;
+    unsigned __int64 pdpt_p         :40;
+    unsigned __int64 ignored_3      :11;
+    unsigned __int64 xd             : 1;
   };
-} VIRT_ADDR;
+} PML4E, *PPML4E;
 
-typedef pte_uint64 PHYS_ADDR;
-
-typedef union PML4E_ {
-  pte_uint64 value;
+typedef union _PDPTE
+{
+  unsigned __int64 value;
   struct {
-    pte_uint64 present        : 1;
-    pte_uint64 rw             : 1;
-    pte_uint64 user           : 1;
-    pte_uint64 write_through  : 1;
-    pte_uint64 cache_disable  : 1;
-    pte_uint64 accessed       : 1;
-    pte_uint64 ignored_1      : 1;
-    pte_uint64 reserved_1     : 1;
-    pte_uint64 ignored_2      : 4;
-    pte_uint64 pdpt_p         :40;
-    pte_uint64 ignored_3      :11;
-    pte_uint64 xd             : 1;
+    unsigned __int64 present        : 1;
+    unsigned __int64 rw             : 1;
+    unsigned __int64 user           : 1;
+    unsigned __int64 write_through  : 1;
+    unsigned __int64 cache_disable  : 1;
+    unsigned __int64 accessed       : 1;
+    unsigned __int64 dirty          : 1;
+    unsigned __int64 large_page      : 1;
+    unsigned __int64 ignored_2      : 4;
+    unsigned __int64 pd_p           :40;
+    unsigned __int64 ignored_3      :11;
+    unsigned __int64 xd             : 1;
   };
-} PML4E;
+} PDPTE, *PPDPTE;
 
-typedef union PDPTE_ {
-  pte_uint64 value;
+typedef union _PDE
+{
+  unsigned __int64 value;
   struct {
-    pte_uint64 present        : 1;
-    pte_uint64 rw             : 1;
-    pte_uint64 user           : 1;
-    pte_uint64 write_through  : 1;
-    pte_uint64 cache_disable  : 1;
-    pte_uint64 accessed       : 1;
-    pte_uint64 dirty          : 1;
-    pte_uint64 page_size      : 1;
-    pte_uint64 ignored_2      : 4;
-    pte_uint64 pd_p           :40;
-    pte_uint64 ignored_3      :11;
-    pte_uint64 xd             : 1;
+    unsigned __int64 present        : 1;
+    unsigned __int64 rw             : 1;
+    unsigned __int64 user           : 1;
+    unsigned __int64 write_through  : 1;
+    unsigned __int64 cache_disable  : 1;
+    unsigned __int64 accessed       : 1;
+    unsigned __int64 dirty          : 1;
+    unsigned __int64 large_page      : 1;
+    unsigned __int64 ignored_2      : 4;
+    unsigned __int64 pt_p           :40;
+    unsigned __int64 ignored_3      :11;
+    unsigned __int64 xd             : 1;
   };
-} PDPTE;
+} PDE, *PPDE;
 
-typedef union PDE_ {
-  pte_uint64 value;
-  struct {
-    pte_uint64 present        : 1;
-    pte_uint64 rw             : 1;
-    pte_uint64 user           : 1;
-    pte_uint64 write_through  : 1;
-    pte_uint64 cache_disable  : 1;
-    pte_uint64 accessed       : 1;
-    pte_uint64 dirty          : 1;
-    pte_uint64 page_size      : 1;
-    pte_uint64 ignored_2      : 4;
-    pte_uint64 pt_p           :40;
-    pte_uint64 ignored_3      :11;
-    pte_uint64 xd             : 1;
-  };
-} PDE;
-
-typedef union PTE_ {
-  pte_uint64 value;
+typedef union _PTE
+{
+  unsigned __int64 value;
   VIRT_ADDR vaddr;
   struct {
-    pte_uint64 present        : 1;
-    pte_uint64 rw             : 1;
-    pte_uint64 user           : 1;
-    pte_uint64 write_through  : 1;
-    pte_uint64 cache_disable  : 1;
-    pte_uint64 accessed       : 1;
-    pte_uint64 dirty          : 1;
-    pte_uint64 pat            : 1;
-    pte_uint64 global         : 1;
-    pte_uint64 ignored_1      : 3;
-    pte_uint64 page_frame     :40;
-    pte_uint64 ignored_3      :11;
-    pte_uint64 xd             : 1;
+    unsigned __int64 present        : 1;
+    unsigned __int64 rw             : 1;
+    unsigned __int64 user           : 1;
+    unsigned __int64 write_through  : 1;
+    unsigned __int64 cache_disable  : 1;
+    unsigned __int64 accessed       : 1;
+    unsigned __int64 dirty          : 1;
+    unsigned __int64 pat            : 1;
+    unsigned __int64 global         : 1;
+    unsigned __int64 ignored_1      : 3;
+    unsigned __int64 page_frame     :40;
+    unsigned __int64 ignored_3      :11;
+    unsigned __int64 xd             : 1;
   };
-} PTE;
+} PTE, *PPTE;
 #pragma pack(pop)
 
 // Loglevels to exclude debug messages from production builds.
-typedef enum PTE_LOGLEVEL_ {
+typedef enum PTE_LOGLEVEL_ 
+{
   PTE_ERR = 0,
   PTE_LOG,
   PTE_DEBUG
 } PTE_LOGLEVEL;
 
-// The default loglevel for this build
-#define PTE_BUILD_LOGLEVEL PTE_LOG
 
 // Operating system independent error checking.
-typedef enum PTE_STATUS_ {
+typedef enum PTE_STATUS_ 
+{
   PTE_SUCCESS = 0,
   PTE_ERROR,
   PTE_ERROR_HUGE_PAGE,
   PTE_ERROR_RO_PTE
 } PTE_STATUS;
 
-// Functions and data for directly manipulating the page tables.
-// Create an object of this type by mallocing some memory and then calling
-// pte_mmap_init() on it.
-typedef struct PTE_MMAP_OBJ_ {
-  // this pointer.
-  struct PTE_MMAP_OBJ_ *self;
-  // Public
-  PTE_STATUS (*remap_page)(struct PTE_MMAP_OBJ_ *self, PHYS_ADDR target);
-  // Private
-  void *(*get_rogue_page_)(void);
-  void (*free_rogue_page_)(void *page);
-  void *(*phys_to_virt_)(PHYS_ADDR addr);
-  PTE_STATUS (*find_pte_)(struct PTE_MMAP_OBJ_ *self, void *vaddr, PTE **pte);
-  void (*flush_tlbs_page_)(void *page);
-  PTE_CR3 (*get_cr3_)(void);
-  void (*print_pte_)(struct PTE_MMAP_OBJ_ *self, PTE_LOGLEVEL loglevel,
-                     PTE *pte);
-  // Internal Attributes
-  VIRT_ADDR rogue_page;
-  PTE *rogue_pte;
-  PHYS_ADDR original_addr;
-  PTE_LOGLEVEL loglevel;
-} PTE_MMAP_OBJ;
 
-// Initializer for newly created objects.
-void pte_mmap_init(PTE_MMAP_OBJ *self);
-// Call this before freeing obj or the rogue_page.
-// Will reset the page table entry for the rogue page.
-void pte_mmap_cleanup(PTE_MMAP_OBJ *self);
+typedef struct _PTE_METHOD_DATA 
+{ 
+	BOOLEAN pte_method_is_ready_to_use;
+	VIRT_ADDR page_aligned_rogue_ptr;
+	volatile PPTE rogue_pte;
+	PHYS_ADDR original_addr;
+	PTE_LOGLEVEL loglevel;
+} PTE_METHOD_DATA, *PPTE_METHOD_DATA;
 
-#endif  // _PTE_MMAP_H_
+
+#endif

@@ -17,35 +17,38 @@
 */
 
 #include "winpmem.h"
-#include "pte_mmap_windows.h"
-#include "read.h"
-#include "kd.h"
-
-// slightly enhanced non-null pointer checking / kernel address space sanity checking.
-#if defined(_WIN64)
-SIZE_T ValidKernel = 0xffff000000000000;
-#else
-SIZE_T ValidKernel = 0x80000000;
+#include "pte_mmap.c"
+#include "read.c"
+#include "kd.c"
+#if EVENTLOG_WRITING == 1
+#include "log.c"
 #endif
 
+_IRQL_requires_max_(PASSIVE_LEVEL) 
 DRIVER_UNLOAD IoUnload;
+
+_IRQL_requires_max_(PASSIVE_LEVEL) 
 DRIVER_INITIALIZE DriverEntry;
+
+_IRQL_requires_max_(PASSIVE_LEVEL) 
 NTSTATUS AddMemoryRanges(PWINPMEM_MEMORY_INFO info) ;
+
+_IRQL_requires_max_(PASSIVE_LEVEL) 
+__drv_dispatchType(IRP_MJ_CREATE)  __drv_dispatchType(IRP_MJ_CLOSE) DRIVER_DISPATCH wddCreateClose;
+
+_IRQL_requires_max_(PASSIVE_LEVEL) 
+__drv_dispatchType(IRP_MJ_DEVICE_CONTROL) DRIVER_DISPATCH wddDispatchDeviceControl;
+
 
 #ifdef ALLOC_PRAGMA
 
-#pragma alloc_text( INIT , DriverEntry ) 
 #pragma alloc_text( PAGE , IoUnload ) 
+#pragma alloc_text( INIT , DriverEntry ) 
 #pragma alloc_text( PAGE , AddMemoryRanges ) 
-
+#pragma alloc_text( PAGE , wddCreateClose ) 
+#pragma alloc_text( PAGE , wddDispatchDeviceControl ) 
 #endif
 
-
-// The following globals are populated in the kernel context from DriverEntry
-// and reported to the user context.
-
-// The kernel CR3
-LARGE_INTEGER CR3;  // Floating global.
 
 VOID IoUnload(IN PDRIVER_OBJECT DriverObject) 
 {
@@ -56,23 +59,21 @@ VOID IoUnload(IN PDRIVER_OBJECT DriverObject)
 	ASSERT(DriverObject); // xxx: No checks needed unless the kernel is in serious trouble.
 
 	pDeviceObject = DriverObject->DeviceObject;
-
-	// xxx: The device object should be fine unless the device creation failed in DriverEntry.
-	// That could happen for example on name collision (someone else has a device called like that.)
-	// The following check therefore may actually fail and needs a real check.
+	
+	// Checking every object allows to call the IoUnload routine from DriverEntry at any point for cleaning/freeing whatever needs to be freed/cleaned.
 
 	if ((SIZE_T) pDeviceObject > ValidKernel)
 	{
 		ASSERT((SIZE_T) pDeviceObject->DeviceExtension > ValidKernel); // does not happen. 
-		ext=(PDEVICE_EXTENSION) pDeviceObject->DeviceExtension;
+		ext = (PDEVICE_EXTENSION) pDeviceObject->DeviceExtension;
+		
+		#if defined(_WIN64)
+		if (ext->pte_data.pte_method_is_ready_to_use) restoreOriginalRoguePage(&ext->pte_data);
+		#endif
+		if (ext->MemoryHandle) ZwClose(ext->MemoryHandle);
 
 		RtlInitUnicodeString (&DeviceLinkUnicodeString, L"\\??\\" PMEM_DEVICE_NAME);
 		IoDeleteSymbolicLink (&DeviceLinkUnicodeString);
-
-		if ((SIZE_T) (ext->pte_mmapper) > ValidKernel)
-		{
-		  pte_mmap_windows_delete(ext->pte_mmapper);
-		}
 		
 		if ((SIZE_T) (DriverObject->FastIoDispatch) > ValidKernel) 
 		{
@@ -89,6 +90,8 @@ VOID IoUnload(IN PDRIVER_OBJECT DriverObject)
 
   - The Physical memory address ranges.
 */
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
 NTSTATUS AddMemoryRanges(PWINPMEM_MEMORY_INFO info) 
 {
   PPHYSICAL_MEMORY_RANGE MmPhysicalMemoryRange = MmGetPhysicalMemoryRanges();
@@ -129,9 +132,9 @@ NTSTATUS AddMemoryRanges(PWINPMEM_MEMORY_INFO info)
   return STATUS_SUCCESS;
 }
 
-__drv_dispatchType(IRP_MJ_CREATE) DRIVER_DISPATCH wddCreate;
 
-NTSTATUS wddCreate(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp) 
+
+NTSTATUS wddCreateClose(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp) 
 {
   if (!DeviceObject || !Irp) 
   {
@@ -145,224 +148,287 @@ NTSTATUS wddCreate(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 }
 
 
-__drv_dispatchType(IRP_MJ_CLOSE) DRIVER_DISPATCH wddClose;
-
-NTSTATUS wddClose(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp) 
+NTSTATUS wddDispatchDeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP Irp)
 {
-  PDEVICE_EXTENSION ext = (PDEVICE_EXTENSION) DeviceObject->DeviceExtension;
-  
-  if (!DeviceObject || !Irp) 
-  {
-		return STATUS_INVALID_PARAMETER;
-  }
-  if (ext->MemoryHandle != 0) 
-  {
-    ZwClose(ext->MemoryHandle);
-    ext->MemoryHandle = 0;
-  }
+	PIO_STACK_LOCATION IrpStack;
+	NTSTATUS status = STATUS_SUCCESS;
+	ULONG IoControlCode;
+	PVOID inBuffer;
+	PVOID outBuffer;
+	PDEVICE_EXTENSION ext;
+	ULONG InputLen, OutputLen;
 
-  Irp->IoStatus.Status = STATUS_SUCCESS;
-  Irp->IoStatus.Information = 0;
-
-  IoCompleteRequest(Irp,IO_NO_INCREMENT);
-
-  return STATUS_SUCCESS;
-}
-
-
-
-__drv_dispatchType(IRP_MJ_DEVICE_CONTROL) DRIVER_DISPATCH wddDispatchDeviceControl;
-
-NTSTATUS wddDispatchDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
-{
-  PIO_STACK_LOCATION IrpStack;
-  NTSTATUS status = STATUS_INVALID_PARAMETER;
-  ULONG IoControlCode;
-  PVOID inBuffer;
-  PVOID outBuffer;
-  u32 mode = 1;
-  PDEVICE_EXTENSION ext;
-  ULONG InputLen, OutputLen;
-  PWINPMEM_MEMORY_INFO info; // PTR
-  LARGE_INTEGER kernelbase;
-  
-  PAGED_CODE();
-  
-  if(KeGetCurrentIrql() != PASSIVE_LEVEL) 
-  {
-    status = STATUS_SUCCESS;
-    goto exit;
-  }
-
-  ext = (PDEVICE_EXTENSION)DeviceObject->DeviceExtension;
-
-  Irp->IoStatus.Information = 0;
-
-  IrpStack = IoGetCurrentIrpStackLocation(Irp);
-
-  inBuffer = IrpStack->Parameters.DeviceIoControl.Type3InputBuffer;
-  outBuffer = Irp->UserBuffer;
-  
-  
-  OutputLen = IrpStack->Parameters.DeviceIoControl.OutputBufferLength;
-  InputLen = IrpStack->Parameters.DeviceIoControl.InputBufferLength;
-  IoControlCode = IrpStack->Parameters.DeviceIoControl.IoControlCode;
-
-  switch ((IoControlCode & 0xFFFFFF0F)) // why '& 0xFFFFFF0F'?
-  {
-
-    // Return information about memory layout etc through this ioctrl.
-  case IOCTL_GET_INFO: 
-  {
+	PAGED_CODE();
 	
-	if (!(outBuffer))
+	Irp->IoStatus.Information = 0;
+
+	if(KeGetCurrentIrql() != PASSIVE_LEVEL) 
 	{
-		DbgPrint("Error: outbuffer invalid in device io dispatch.\n");
-		status = STATUS_INVALID_PARAMETER;
+		status = STATUS_SUCCESS;
 		goto exit;
 	}
 
-    if (OutputLen < sizeof(WINPMEM_MEMORY_INFO)) 
+	ext = (PDEVICE_EXTENSION)DeviceObject->DeviceExtension;
+
+	IrpStack = IoGetCurrentIrpStackLocation(Irp);
+
+	inBuffer = IrpStack->Parameters.DeviceIoControl.Type3InputBuffer;
+	outBuffer = Irp->UserBuffer;
+
+
+	OutputLen = IrpStack->Parameters.DeviceIoControl.OutputBufferLength;
+	InputLen = IrpStack->Parameters.DeviceIoControl.InputBufferLength;
+	IoControlCode = IrpStack->Parameters.DeviceIoControl.IoControlCode;
+
+	switch (IoControlCode)
 	{
-		DbgPrint("Error: outbuffer too small for the info struct!\n");
-        status = STATUS_INFO_LENGTH_MISMATCH;
-        goto exit;
-    }
-	
-	try 
+
+	// Return information about memory layout etc through this ioctrl.
+	case IOCTL_GET_INFO: 
 	{
-		ProbeForRead( outBuffer, sizeof(WINPMEM_MEMORY_INFO), sizeof( UCHAR ) ); 
-		ProbeForWrite( outBuffer, sizeof(WINPMEM_MEMORY_INFO), sizeof( UCHAR ) ); 
-	}
-	except(EXCEPTION_EXECUTE_HANDLER)
-	{
-		status = GetExceptionCode();
-		DbgPrint("Error: 0x%08x, probe in Device io dispatch, outbuffer. A naughty process sent us a bad/nonexisting buffer.\n", status); 
+		PWINPMEM_MEMORY_INFO pInfo = NULL; 
 		
-		status = STATUS_SUCCESS; // to the I/O manager: everything's under control. Nothing to see here.
-		goto exit;
-	}
-	
-	info = (void *) outBuffer;
+		if (!outBuffer)
+		{
+			DbgPrint("Error: outbuffer invalid in device io dispatch.\n");
+			status = STATUS_INVALID_PARAMETER;
+			goto exit;
+		}
 
-    // Ensure we clear the buffer first.
-    RtlZeroMemory(info, sizeof(WINPMEM_MEMORY_INFO));
+		if (OutputLen < sizeof(WINPMEM_MEMORY_INFO)) 
+		{
+			DbgPrint("Error: outbuffer too small for the info struct!\n");
+			status = STATUS_INFO_LENGTH_MISMATCH;
+			goto exit;
+		}
 
-	status = AddMemoryRanges(info);
+		try 
+		{
+			ProbeForRead( outBuffer, sizeof(WINPMEM_MEMORY_INFO), sizeof( UCHAR ) ); 
+			ProbeForWrite( outBuffer, sizeof(WINPMEM_MEMORY_INFO), sizeof( UCHAR ) ); 
+		}
+		except(EXCEPTION_EXECUTE_HANDLER)
+		{
+			status = GetExceptionCode();
+			DbgPrint("Error: 0x%08x, probe in Device io dispatch, outbuffer. A naughty process sent us a bad/nonexisting buffer.\n", status); 
+			
+			status = STATUS_INVALID_PARAMETER; // Naughty usermode process, this is your fault.
+			goto exit;
+		}
 
-    if (status != STATUS_SUCCESS) 
+		pInfo = (PWINPMEM_MEMORY_INFO) outBuffer;
+
+		// Ensure we clear the buffer first.
+		RtlZeroMemory(pInfo, sizeof(WINPMEM_MEMORY_INFO));
+
+		status = AddMemoryRanges(pInfo);
+
+		if (status != STATUS_SUCCESS) 
+		{
+			DbgPrint("Error: AddMemoryRanges returned %08x. output buffer size: 0x%x\n",status,OutputLen);
+			goto exit;
+		}
+
+		WinDbgPrint("Returning info on the system memory.\n");
+
+		// We are currently running in user context which means __readcr3() will
+		// return the process CR3. So we return the kernel CR3 we found in DriverEntry in system process context.
+
+		pInfo->CR3.QuadPart = ext->CR3.QuadPart; // The saved CR3 from DriverEntry/System process context.
+		pInfo->NtBuildNumber.QuadPart = (SIZE_T) *NtBuildNumber; // value of NtBuildNumber
+		pInfo->NtBuildNumberAddr.QuadPart = (SIZE_T) NtBuildNumber;  // Address of NtBuildNumber (this might not be needed anymore?)
+		pInfo->KernBase.QuadPart = ext->kernelbase.QuadPart;
+
+		// Fill in KPCR.
+		GetKPCR(pInfo);
+
+		// This is the length of the response.
+		Irp->IoStatus.Information = sizeof(WINPMEM_MEMORY_INFO);
+
+		status = STATUS_SUCCESS;
+	}; break;  // end of IOCTL_GET_INFO
+
+	// set or change mode and check availability of neccessary functions
+	case IOCTL_SET_MODE: 
 	{
-		DbgPrint("Error: AddMemoryRanges returned %08x. output buffer size: 0x%x\n",status,OutputLen);
-		goto exit;
-    }
-
-    WinDbgPrint("Returning info on the system memory.\n");
-
-    // We are currently running in user context which means __readcr3() will
-    // return the process CR3. So we return the kernel CR3 we found
-    // when loading.
-    info->CR3.QuadPart = CR3.QuadPart; // The saved CR3 from DriverEntry/System process context.
-    info->NtBuildNumber.QuadPart = (SIZE_T) *NtBuildNumber;
-    info->NtBuildNumberAddr.QuadPart = (SIZE_T) NtBuildNumber;
-    kernelbase.QuadPart = KernelGetModuleBaseByPtr(); // I like to have that saved first in normal kernelspace und not directly into usermode buffer.
-	
-	if (kernelbase.QuadPart) WinDbgPrint("Kernelbase: %016llx.\n",kernelbase.QuadPart);
-	
-	info->KernBase.QuadPart = kernelbase.QuadPart;
-
-    // Fill in KPCR.
-    GetKPCR(info);
-
-    // This is the length of the response.
-    Irp->IoStatus.Information = sizeof(WINPMEM_MEMORY_INFO);
-
-    status = STATUS_SUCCESS;
-  }; break;
-
-  // set or change mode and check availability of neccessary functions
-  case IOCTL_SET_MODE: 
-  {
-    WinDbgPrint("Setting Acquisition mode.\n");
-	
-	if ((!(inBuffer)) || (InputLen < sizeof(u32)))
-	{
-		DbgPrint("InBuffer in device io dispatch was invalid.\n");
-		status = STATUS_INFO_LENGTH_MISMATCH;
-		goto exit;
-	}
-	
-	try 
-	{
-		ProbeForRead( inBuffer, sizeof(u32), sizeof( UCHAR ) ); 
-	}
-	except(EXCEPTION_EXECUTE_HANDLER)
-	{
-		status = GetExceptionCode();
-		DbgPrint("Error: 0x%08x, probe in Device io dispatch, Inbuffer. A naughty process sent us a bad/nonexisting buffer.\n", status); 
+		ULONG mode = 0;
 		
-		status = STATUS_SUCCESS; // to the I/O manager: everything's under control. Nothing to see here.
-		goto exit;
-	}
-	
-	// security checks finished
-
-      mode = *(u32 *) inBuffer; 
-
-      switch(mode) 
-	  {
-      case PMEM_MODE_PHYSICAL:
-        WinDbgPrint("Using physical memory device for acquisition.\n");
-        status = STATUS_SUCCESS;
-		ext->mode = mode;
-        break;
-
-      case PMEM_MODE_IOSPACE:
-        WinDbgPrint("Using MmMapIoSpace for acquisition.\n");
-        status = STATUS_SUCCESS;
-		ext->mode = mode;
-        break;
-
-      case PMEM_MODE_PTE:
-        if (!(ext->pte_mmapper)) 
+		WinDbgPrint("Setting Acquisition mode.\n");
+		
+		if (ext->mode)
 		{
-			WinDbgPrint("Kernel APIs required for this method are not available.\n");
-			status = STATUS_UNSUCCESSFUL;
-        } 
-		else 
-		{
-			WinDbgPrint("Using PTE Remapping for acquisition.\n");
+			DbgPrint("Sorry, the mode has already been set to method %u! Hot resetting of the mode is not allowed for safety.\n", ext->mode);
 			status = STATUS_SUCCESS;
-			ext->mode = mode;
-        };
-        break;
+			goto exit;
+		}
 
-      default:
-        WinDbgPrint("Invalid acquisition mode %d.\n", mode);
-        status = STATUS_INVALID_PARAMETER;
-      };
+		if ((!(inBuffer)) || (InputLen < sizeof(ULONG)))
+		{
+			DbgPrint("Error: InBuffer in device io dispatch was invalid.\n");
+			status = STATUS_INFO_LENGTH_MISMATCH;
+			goto exit;
+		}
+
+		try 
+		{
+			ProbeForRead( inBuffer, sizeof(ULONG), sizeof( UCHAR ) ); 
+			mode = *(PULONG)inBuffer; 
+		}
+		except(EXCEPTION_EXECUTE_HANDLER)
+		{
+			status = GetExceptionCode();
+			DbgPrint("Error: 0x%08x, probe in Device io dispatch, Inbuffer. A naughty process sent us a bad/nonexisting buffer.\n", status); 
+			
+			status = STATUS_INVALID_PARAMETER; // Naughty usermode process, this is your fault.
+			goto exit;
+		}
+
+		switch(mode) 
+		{
+			case PMEM_MODE_PHYSICAL:
+				if (ext->MemoryHandle)
+				{
+					WinDbgPrint("SET MODE: using physical memory device for acquisition.\n");
+					status = STATUS_SUCCESS;
+					ext->mode = mode;
+				}
+				else 
+				{
+					DbgPrint("Error: the acquisition mode 'physical memory device' failed setup and is not available.\n");
+					status = STATUS_NOT_SUPPORTED;
+				}
+				break;
+
+			case PMEM_MODE_IOSPACE:
+				// always works, if it works.
+				WinDbgPrint("SET MODE: Using MmMapIoSpace for acquisition.\n");
+				status = STATUS_SUCCESS;
+				ext->mode = mode;
+				break;
+
+			case PMEM_MODE_PTE:
+				
+				#if defined(_WIN64)
+				if (ext->pte_data.pte_method_is_ready_to_use)
+				{
+					WinDbgPrint("SET MODE: Using PTE Remapping for acquisition.\n");
+					status = STATUS_SUCCESS;
+					ext->mode = mode;
+				}
+				else
+				{
+					DbgPrint("Error: the acquisition mode PTE failed setup and is not available.\n");
+					status = STATUS_NOT_SUPPORTED;
+				}
+				#else
+					
+				WinDbgPrint("PTE Remapping has not been implemented on 32 bit OS.\n");
+				status = STATUS_NOT_IMPLEMENTED;
+				
+				#endif
+				
+				break;
+
+			default:
+				WinDbgPrint("Invalid acquisition mode %u.\n", mode);
+				status = STATUS_INVALID_PARAMETER;
+			
+		}; // switch mode
 
 	
-  }; break;
+	}; break;  // end of IOCTL_SET_MODE
 
 
 #if PMEM_WRITE_ENABLED == 1
-  case IOCTL_WRITE_ENABLE: 
-  {
-	
-	// xxx: thankfully for me, we do not access any in/out buffers here.
-    ext->WriteEnabled = !ext->WriteEnabled;
-    WinDbgPrint("Write mode is %d. Do you know what you are doing?\n", ext->WriteEnabled);
-    status = STATUS_SUCCESS;
-	
-  }; break;
+	case IOCTL_WRITE_ENABLE: 
+	{
+		// We do not access any in/out buffers here.
+		ext->WriteEnabled = !ext->WriteEnabled;
+		WinDbgPrint("Write mode is %u. Do you know what you are doing?\n", ext->WriteEnabled);
+		status = STATUS_SUCCESS;
 
+	}; break;  // end of IOCTL_WRITE_ENABLE
 #endif
+  
+	case IOCTL_REVERSE_SEARCH_QUERY: 
+	{
+		#if defined(_WIN64)
+		
+		PTE_STATUS pte_status = PTE_SUCCESS;
+		VIRT_ADDR In_VA;
+		volatile PPTE pPTE;
+		PHYS_ADDR Out_PhysAddr;
+		ULONG page_offset;
+		
+		if (!ext->pte_data.pte_method_is_ready_to_use)
+		{
+			DbgPrint("Error: the acquisition mode PTE failed setup and is not available.\n");
+			status = STATUS_NOT_SUPPORTED;
+		}
+		else
+		{
+			try 
+			{
+				ProbeForRead( inBuffer, sizeof(UINT64), sizeof( UCHAR ) ); 
+				ProbeForWrite( outBuffer, sizeof(UINT64), sizeof( UCHAR ) ); 
+				
+				In_VA.value = *(PUINT64) inBuffer;
+				
+			}
+			except(EXCEPTION_EXECUTE_HANDLER)
+			{
+				status = GetExceptionCode();
+				DbgPrint("Error: 0x%08x, probe in reverse search query. A naughty process sent us a bad/nonexisting buffer.\n", status); 
+				
+				status = STATUS_INVALID_PARAMETER; // Naughty usermode process, this is your fault.
+				goto exit;
+			}
+			
+			WinDbgPrint("REVERSE SEARCH QUERY for: VA %llx.\n", In_VA.value);
+			
+			page_offset = (ULONG) In_VA.offset;
+			In_VA.value -= page_offset;
+			
+			ASSERT(!In_VA.offset);
+			
+			pte_status = virt_find_pte(In_VA, &pPTE);
+			Out_PhysAddr = ( PFN_TO_PAGE(pPTE->page_frame) ) + page_offset;
+			
+			// Because NEITHER buffer wasn't locked down.
+			try 
+			{
+				ProbeForWrite( outBuffer, sizeof(UINT64), sizeof( UCHAR ) ); 
+				
+				*(PUINT64) outBuffer = Out_PhysAddr;
+				
+			}
+			except(EXCEPTION_EXECUTE_HANDLER)
+			{
+				status = GetExceptionCode();
+				DbgPrint("Error: 0x%08x, probe in reverse search query. A naughty process sent us a bad/nonexisting buffer.\n", status); 
+				
+				status = STATUS_INVALID_PARAMETER; // Naughty usermode process, this is your fault.
+				goto exit;
+			}
+			
+			Irp->IoStatus.Information = sizeof(UINT64);
+			
+		} // else pte_data.pte_method_is_ready_to_use=yes
+		
+		#else
+		
+		WinDbgPrint("Not implemented on 32 bit OS.\n");
+		status = STATUS_NOT_IMPLEMENTED;
+		
+		#endif
+		
+	} ; break; // IOCTL_REVERSE_SEARCH_QUERY
 
-  default: 
-  {
-    WinDbgPrint("Invalid IOCTRL %d\n", IoControlCode);
-    status = STATUS_INVALID_PARAMETER;
-  };
+	default: 
+	{
+		WinDbgPrint("Invalid IOCTRL %u\n", IoControlCode);
+		status = STATUS_INVALID_PARAMETER;
+	}; 
   }
 
  exit:
@@ -377,7 +443,7 @@ NTSTATUS DriverEntry (IN PDRIVER_OBJECT DriverObject,
                       IN PUNICODE_STRING RegistryPath)
 {
 	UNICODE_STRING DeviceName, DeviceLink;
-	NTSTATUS NtStatus;
+	NTSTATUS ntstatus;
 	PDEVICE_OBJECT DeviceObject = NULL;
 	PDEVICE_EXTENSION extension;
     ULONG FastioTag = 0x54505346; 
@@ -394,7 +460,7 @@ NTSTATUS DriverEntry (IN PDRIVER_OBJECT DriverObject,
 
 	// We create our secure device.
 	// http://msdn.microsoft.com/en-us/library/aa490540.aspx
-	NtStatus = IoCreateDeviceSecure(DriverObject,
+	ntstatus = IoCreateDeviceSecure(DriverObject,
 								  sizeof(DEVICE_EXTENSION),
 								  &DeviceName,
 								  FILE_DEVICE_UNKNOWN,
@@ -404,23 +470,30 @@ NTSTATUS DriverEntry (IN PDRIVER_OBJECT DriverObject,
 								  &GUID_DEVCLASS_PMEM_DUMPER,
 								  &DeviceObject);
 
-	if (!NT_SUCCESS(NtStatus)) 
+	if (!NT_SUCCESS(ntstatus)) 
 	{
-	WinDbgPrint ("IoCreateDevice failed. => %08X\n", NtStatus);
-	return NtStatus;
+		WinDbgPrint ("IoCreateDevice failed. => %08X\n", ntstatus);
+		// nothing to free until here.
+		return ntstatus;
 	}
 
-	DriverObject->MajorFunction[IRP_MJ_CREATE] = wddCreate;
-	DriverObject->MajorFunction[IRP_MJ_CLOSE] = wddClose;
+	DriverObject->MajorFunction[IRP_MJ_CREATE] = wddCreateClose;
+	DriverObject->MajorFunction[IRP_MJ_CLOSE] = wddCreateClose;
 	DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = wddDispatchDeviceControl;
 	DriverObject->MajorFunction[IRP_MJ_READ] = PmemRead; // copies tons of data, always in the range of Gigabytes.
 													   
-	DriverObject->FastIoDispatch = ExAllocatePoolWithTag(NonPagedPool, sizeof(FAST_IO_DISPATCH), FastioTag);
+	DriverObject->FastIoDispatch = ExAllocatePoolWithTag(NonPagedPoolNx, sizeof(FAST_IO_DISPATCH), FastioTag);
+	// In contrast to the MSDN documentation, Using 512/NonPagedPoolNx for ExAllocate will work on Win7 just fine -- although it will be treated as 0/nonpaged (rwx) nonetheless. There is no NX pool in Win7.
 	
 	if (NULL == DriverObject->FastIoDispatch)
 	{
-		DbgPrint("Error: Fast I/O table allocation failed!\n\n");
-		NtStatus = STATUS_INSUFFICIENT_RESOURCES;
+		// This branch will never be taken unless the OS is about to die.
+		DbgPrint("Error: allocation failed (Fast I/O table)!\n\n");
+		
+		// The unload routine will take care of deleting things, but we must call it here if we return error in DriverEntry.
+		IoUnload(DriverObject); // Calling the Unload Routine or freeing all things that happened until here is actually required. 
+		
+		ntstatus = STATUS_INSUFFICIENT_RESOURCES;
 		goto error;
 	}
 	
@@ -444,53 +517,67 @@ NTSTATUS DriverEntry (IN PDRIVER_OBJECT DriverObject,
 	
 	DeviceObject->Flags &= ~DO_DIRECT_IO;
 	DeviceObject->Flags &= ~DO_BUFFERED_IO;
+	
+	DeviceObject->Flags &= ~DO_DEVICE_INITIALIZING; // I/O manager will do that even if we don't because it's in the driver entry.
 
-	DeviceObject->Flags &= ~DO_DEVICE_INITIALIZING; // xxx: I/O manager will do that anyway because it's in the driver entry.
+	RtlInitUnicodeString(&DeviceLink, L"\\??\\" PMEM_DEVICE_NAME);
 
-	RtlInitUnicodeString (&DeviceLink, L"\\??\\" PMEM_DEVICE_NAME);
+	ntstatus = IoCreateSymbolicLink(&DeviceLink, &DeviceName);
 
-	NtStatus = IoCreateSymbolicLink (&DeviceLink, &DeviceName);
-
-	if (!NT_SUCCESS(NtStatus)) 
+	if (!NT_SUCCESS(ntstatus)) 
 	{
-	  WinDbgPrint("IoCreateSymbolicLink failed. => %08X\n", NtStatus);
-	  // The unload routine will take care of deleting things and we should not double free things.
-	  goto error;
+		WinDbgPrint("IoCreateSymbolicLink failed. => %08X\n", ntstatus);
+		// The unload routine will take care of deleting things and we should not double free things.
+		IoUnload(DriverObject); // Calling the Unload Routine or freeing all things that happened until here is actually required. 
+
+		goto error;
 	}
 
-	// Populate globals in kernel context.
+	// Initialize the device extension with safe defaults.
+	extension = DeviceObject->DeviceExtension;
+	
+	RtlZeroMemory(extension, sizeof(DEVICE_EXTENSION)); // ensure device extension is really zeroed out.
+	
+		// Populate globals in kernel context.
 	// Used when virtual addressing is enabled, hence when the PG bit is set in CR0. 
 	// CR3 enables the processor to translate linear addresses into physical addresses by locating the page directory and page tables for the current task. 
 	// Typically, the upper 20 bits of CR3 become the page directory base register (PDBR), which stores the physical address of the first page directory entry. 
 	// If the PCIDE bit in CR4 is set, the lowest 12 bits are used for the process-context identifier (PCID)
-	CR3.QuadPart = __readcr3();
-
-	// Initialize the device extension with safe defaults.
-	extension = DeviceObject->DeviceExtension;
-	extension->mode = PMEM_MODE_PHYSICAL;
-	extension->MemoryHandle = 0;
-
-	#if defined(_WIN64)
-	// Disable pte mapping for 32 bit systems.
-	extension->pte_mmapper = pte_mmap_windows_new();
-
-	if (extension->pte_mmapper == NULL) 
+	extension->CR3.QuadPart = __readcr3();
+	
+	extension->kernelbase.QuadPart = KernelGetModuleBaseByPtr();
+	
+	// Setup physical memory device handle from Windows.
+	if (!setupPhysMemSectionHandle(&extension->MemoryHandle))
 	{
-	  // The unload routine will take care of deleting things and we should not double free things.
-	  goto error;
+		DbgPrint("Warning: physical device handle not available! (You will not be able to use this method).\n"); 
+		// This method is deactivated. (handle is zero).
 	}
-	extension->pte_mmapper->loglevel = PTE_ERR;
-
-	// extension->mode = PMEM_MODE_PTE;
-	#else
-	extension->pte_mmapper = NULL;
+	
+	#if defined(_WIN64)
+	// setup PTE mode
+	if (!setupBackupForOriginalRoguePage(&extension->pte_data))
+	{
+		DbgPrint("Warning: PTE method failed! (You will not be able to use this method).\n");
+	}
 	#endif
 
 	ExInitializeFastMutex(&extension->mu);
+	
+	#if EVENTLOG_WRITING == 1
+	if (setupEventLogging(RegistryPath) == STATUS_SUCCESS)
+    {
+		writeToEventLog(DriverObject, 0, 0, STATUS_SUCCESS, WINPMEM_ANNOUNCES_ITS_PRESENCE, 
+						0, NULL, 
+						0, NULL
+						);
+	}
+	#endif
 
 	WinDbgPrint("Driver initialization completed.\n");
-	return NtStatus;
+	return ntstatus;
 
 	error:
 	return STATUS_UNSUCCESSFUL;
 }
+

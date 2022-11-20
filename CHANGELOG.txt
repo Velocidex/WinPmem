@@ -1,4 +1,48 @@
-7. Feb 2022
+### 20. Nov 2022
+
+#### Summary 2.0.2 *Alpha*: 
+
+* Major code refactoring for readability, stability, safety, and performance. PTE remap method rework. Many bugfixes. Security enhanced. Feature upgrade (reverse search). Functionality and correctness testing now much easier, including easier way for users to diagnose and test and show what's going wrong. 
+
+#### Important
+Do not expect a new compiled release for quite a while. Reasons: 
+a) This needs more (of your) testing.
+b) Signing. Signing is an issue.
+
+#### Detailed changelog
+
+* Changelog is now markdown.
+* Major refactoring, increased version only to 2.0.2, although it was a significant change.
+* Added compile instructions.
+* Major refactoring of the code, improvements to readability, stability, safety, and performance. Added many sanity checks that were missing before. 
+	* Major rework of the PTE remapping code. It has many checks that were missing before and also better self-knowledge of when things go the wrong way. 
+	* Now Winpmem/the user will know objectively that everything went well with restoring the rogue page. (The rogue identification string is for used for that. It's not just placebo.)
+* Every bit of code using 64-bit only technology is encapsuled by precompiler switch now. This makes 32 bit drivers smaller, spares them of unusable code, and prevents OACR/code analysis from getting mad. 
+* Feature upgrade: reverse search. This is needed for testing and verifying the correctness of all three methods. 
+* Testing: using the new reverse search, it becomes much easier to quickly check if a method works correct or not. Previously the only way was to fully read the whole RAM (ahh!) and load the dump into volatily, which is cumbersome. Also, users can do it now, and this might help finding and fixing bugs much faster and less painfully.
+* Speaking of testing, a testing/demo source code has been added. Use at your own peril. You need an option to load the (development) driver and a msbuild/VS environment support kernel driver building.
+* Made Winpmem better readable for Microsofts static code analysis (and possibly, humans too), which will help finding bugs and prevent tired humans from making stupid programming errors. 
+* Code Analysis is now lvl 4 with OACR fully enabled. I checked compilation for both 32 and 64 bit. OACR is annoying but prevents a good portion of stupid errors. (It already did)).
+* Winpmem was actually NOT Windows-XP compatible anymore, due to use of NX allocation somewhere deeper in the code.
+However, an upgrade to NX seems reasonable anyway. After several experiments with combining both backward-compability and make NX work, it became apparent that --against the official documentation-- Win7 "supports" NX in terms of interpreting the NonpagedPoolNX (512 or 0x200) as NonPagedPool (0). Don't make any mistake: Win7 has no NX pool. But thanks to a silent update to the kernel(?), the win7 kernel treats NX allocations "as usual" and will not be irritated. For the driver programmer: NonpagedPool allocations can simply be replaced with its NX equivalent without hassle. The deal is, Win7 will not get the benefit, but any modern OS will. Windows XP, however, probably didn't get this silent update, and might perhaps crash. (Not tested.)
+* Winpmem should be considered "not supported" for Windows XP now. Archaeologists should use the old rekall version of Winpmem.
+* Made Winpmem write an eventlog entry about its start. Future versions of Winpmem will now always announce their presence to the system owner thanks to the event logging system. Just in case.
+* (The WDK7600 MAKEFILE and SOURCES are kept to support capable archaelogists to edit the source for Windows XP support for themselves, since Winpmem is still 'almost' compatible. )
+* for safety reason, setting the preferred method is now required, not changeable during uptime of the driver. (No more "ok, I'm with method PTE, and currently reading something, but juuuust changed my mind, switching to Physical Memory device method...!". 
+	* The provided mini exe always sets a method (defaults to PTE), no noticeable change there. Changing the method in plain middle of physical RAM reading always was an unsafe idea and now is prevented hard. 
+	* If you do not use our mini tool, please don't forget to set your method of choice. (Example can be found in testing.)
+
+* Bugfixes: previously, if there was an error in the DriverEntry, Winpmem would not have cleaned up. This has been corrected!
+* Bugfixes: previously, the user might have exited without closing handle. And the driver would never release it, because it would not check in the Unload. This is no longer relevant. 
+* Bugfixes: the write routine was dysfunctional, although precompiler disabled anyway. Hopefully corrected the write routine (did not test) and added a missing ZwUnmapViewOfSection (in error path of write routine). Write is still precompiler-disabled.
+* Bugfixes: not propagating ntstatus correctly.
+* Possible unknown behavior fix: reading from physical memory device is passive level file I/O (ZwMapViewOfSection or ZwReadFile requires PASSIVEL LEVEL). However, acquiring a fast mutex will raise IRQL on thread to APC_LEVEL. In particular, the I/O manager will indicate when a ZwMapViewOfSection or ZwReadFile has finished, and this would be blocked if on APC_LEVEL already (because it is an APC). In any case, this has been resolved. (Though wondering how nobody ever complained.) Reading from the high level physical memory device will now be done on passive, as normal file I/O, no mutex is needed for that. Spontaneous method switching has been disabled.
+* Bugfixes (neglectable): hopefully fixed optical issues in the usermode "mini tool" with errors not propagated correctly. Not tested, priority too low. ;-)
+
+* Wanted TODO: radically shorten the ioctl get-info struct. However, doing so will break maintained offset stability, e.g., users that use this optional get-info ioctl code must adapt their source code.
+
+
+### 7. Feb 2022
 
 * Fixes in KernelGetModuleBaseByPtr: on successfull return the buffer is not freed. This is a memory leak, but happens only one time (1).
 Second, added a buffer check in KernelGetModuleBaseByPtr (2), and third, removed an unneeded checking in the for loop (3), which PREfast marked as nonsense check.
@@ -16,9 +60,7 @@ Impact: some memory of varying size will be lost as often as the user launches a
 * Recommendation 2: both methods MmMapToIoSpace and Device\\PhysicalMemory usage are deprecated. The second could be kept for 32 bit OS users, but the first one is a candidate for removal?
 
 
-============
-
-6. Oct 2020
+### 6. Oct 2020
 
 New features & major revision (see below).
 

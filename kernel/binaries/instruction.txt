@@ -1,0 +1,11 @@
+Place your compiled driver binaries here:
+
+1) "winpmem_x64.sys" 
+2) "winpmem_x86.sys" 
+
+And then compile the usermode ("mini tool") executable. The executable will then contain both driver files after compilation.
+
+Don't forget 
+* bcdedit /set testsigning on & reboot
+* memory compression off for Volatility(?)
+
