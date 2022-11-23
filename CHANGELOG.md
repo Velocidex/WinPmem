@@ -1,18 +1,20 @@
 ### 20. Nov 2022
 
-#### Summary 2.0.2 *Alpha*: 
+#### Summary 3.0.1 *Alpha*: 
 
 * Major code refactoring for readability, stability, safety, and performance. PTE remap method rework. Many bugfixes. Security enhanced. Feature upgrade (reverse search). Functionality and correctness testing now much easier, including easier way for users to diagnose and test and show what's going wrong. 
 
 #### Important
 Do not expect a new compiled release for quite a while. Reasons: 
-a) This needs more (of your) testing.
+a) This needs more (of your) testing. 
 b) Signing. Signing is an issue.
+
+Hence, compiling becomes important again, and compile instructions have been added.
 
 #### Detailed changelog
 
 * Changelog is now markdown.
-* Major refactoring, increased version only to 2.0.2, although it was a significant change.
+* Major refactoring, increased version to ~~2.0.2~~ 3.0.1.
 * Added compile instructions.
 * Major refactoring of the code, improvements to readability, stability, safety, and performance. Added many sanity checks that were missing before. 
 	* Major rework of the PTE remapping code. It has many checks that were missing before and also better self-knowledge of when things go the wrong way. 
