@@ -9,7 +9,7 @@ This generates three files needed for eventlog writing: log_message.rc, log_mess
 
 Note: eventlog writing can be disabled during development phase. The precompiler switch is found in precompiler.h (all precompiler switches go there now), but you will also need to remove the statement for using the message log ressource file in the vcxproj. Then step one can be skipped.
 
-2. `msbuild /p:configuration=Release/Debug /p:platform=Win32/x64 winpmem.vcxproj`. Or use VS. Build environment must be configured for kernel driver compilation. This is also true for the usermoder testing program.
+2. `msbuild /p:configuration=Release/Debug /p:platform=Win32/x64 winpmem.vcxproj`. Or use VS. The build environment must be configured for kernel driver compilation. This is also true for the usermoder testing program.
 
 #### Installing: 
 
@@ -22,7 +22,7 @@ You could use testsigning, and load the driver with any suitable tool.
 
 #### Testing: 
 
-This is a devel version. There a simplified usermode code to interface with Winpmem and test its functionality in the 'testing' folder. Compiling and using the mini tool works, too, but please make sure to replace the two years old original driver binaries (*x86.sys and *64.sys)) with the fresh build. 
+This is a devel version. There is a simplified usermode code to interface with Winpmem and test its functionality in the 'testing' folder. Compiling and using the mini tool works, too, but please make sure to replace the two years old original driver binaries (*x86.sys and *64.sys) with the fresh build. 
 
 Please refer to 3.0.1 when reporting bugs and issues for the devel version.
 
