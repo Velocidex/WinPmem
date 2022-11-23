@@ -2,7 +2,7 @@
    Copyright 2018 Velocidex Innovations <mike@velocidex.com>
    Copyright 2014-2017 Google Inc.
    Authors: Viviane Zwanger, Michael Cohen <mike@velocidex.com>
-  
+
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
    You may obtain a copy of the License at
@@ -23,10 +23,8 @@
 #define PMEM_DEVICE_NAME L"pmem"
 #define PMEM_POOL_TAG 0x4d454d50
 
-
 // In order to enable writing this must be set to 1 and the
 // appropriate IOCTL must be sent to switch the driver to write mode.
-// #define PMEM_WRITE_ENABLED 1
 
 #include <ntifs.h>
 #include <wdmsec.h>
@@ -67,7 +65,7 @@ typedef struct _DEVICE_EXTENSION
 {
   /* If we read from \\Device\\PhysicalMemory, this is the handle to that. */
   HANDLE MemoryHandle;
-  
+
   #if defined(_WIN64)
   /* If we read by using the PTE method  */
   PTE_METHOD_DATA  pte_data;
@@ -77,13 +75,13 @@ typedef struct _DEVICE_EXTENSION
   ULONG mode;
 
   ULONG WriteEnabled;
-  
+
   LARGE_INTEGER CR3;  // Kernel CR3, for user info
-  
+
   LARGE_INTEGER kernelbase;  // Kernelbase, for user info
 
   FAST_MUTEX mu;
-  
+
 } DEVICE_EXTENSION, *PDEVICE_EXTENSION;
 
 // 5e1ce668-47cb-410e-a664-5c705ae4d71b

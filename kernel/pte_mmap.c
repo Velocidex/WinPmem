@@ -12,7 +12,7 @@
 // Authors: Johannes Stüttgen (johannes.stuettgen@gmail.com)
 //          Michael Cohen <mike@velocidex.com>
 //          Viviane Zwanger
-// 
+//
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -46,15 +46,13 @@ BOOLEAN setupBackupForOriginalRoguePage(_Inout_ PPTE_METHOD_DATA pPtedata);
 __declspec(noinline) _IRQL_requires_max_(APC_LEVEL)
 VOID restoreOriginalRoguePage(_Inout_ PPTE_METHOD_DATA pPtedata);
 
-
 #ifdef ALLOC_PRAGMA
-#pragma alloc_text( NONPAGED , pte_remap_rogue_page ) 
+#pragma alloc_text( NONPAGED , pte_remap_rogue_page )
 #pragma alloc_text( NONPAGED , print_pte_contents )
-#pragma alloc_text( NONPAGED , virt_find_pte ) 
-#pragma alloc_text( NONPAGED , setupBackupForOriginalRoguePage ) 
-#pragma alloc_text( NONPAGED , restoreOriginalRoguePage) 
+#pragma alloc_text( NONPAGED , virt_find_pte )
+#pragma alloc_text( NONPAGED , setupBackupForOriginalRoguePage )
+#pragma alloc_text( NONPAGED , restoreOriginalRoguePage)
 #endif
-
 
 // Edit the page tables to relink a virtual address to a specific physical page.
 //
@@ -66,36 +64,36 @@ VOID restoreOriginalRoguePage(_Inout_ PPTE_METHOD_DATA pPtedata);
 //
 
 __declspec(noinline) _IRQL_requires_max_(APC_LEVEL)
-PTE_STATUS pte_remap_rogue_page(_Inout_ PPTE_METHOD_DATA pPtedata, _In_ PHYS_ADDR Phys_addr) 
+PTE_STATUS pte_remap_rogue_page(_Inout_ PPTE_METHOD_DATA pPtedata, _In_ PHYS_ADDR Phys_addr)
 {
-	if (!(Phys_addr && pPtedata)) return PTE_ERROR;
-	
-	if (!pPtedata->page_aligned_rogue_ptr.pointer) return PTE_ERROR;
+    if (!(Phys_addr && pPtedata)) return PTE_ERROR;
 
-	// Can only remap pages, addresses must be page aligned. No offset allowed.
-	if (((!Phys_addr) & PAGE_MASK) || pPtedata->page_aligned_rogue_ptr.offset)
-	{
-		WinDbgPrint("Failed to map %llx, "
-					"only page aligned remapping is supported!\n",
-					Phys_addr);
-					
-		return PTE_ERROR;
-	}
+    if (!pPtedata->page_aligned_rogue_ptr.pointer) return PTE_ERROR;
 
-	#if PRINT_PTE_REMAP_ACTIONS == 1  
-	// Careful, this can be preeetty noisy if reading the whole RAM.
-	WinDbgPrint("Remapping va %p to %llx\n", pPtedata->page_aligned_rogue_ptr.pointer, Phys_addr);
-	#endif
-	
-	// __debugbreak();
-				   
-	// Change the pte to point to the new offset.
-	pPtedata->rogue_pte->page_frame = PAGE_TO_PFN(Phys_addr);
+    // Can only remap pages, addresses must be page aligned. No offset allowed.
+    if (((!Phys_addr) & PAGE_MASK) || pPtedata->page_aligned_rogue_ptr.offset)
+    {
+        WinDbgPrint("Failed to map %llx, "
+                    "only page aligned remapping is supported!\n",
+                    Phys_addr);
 
-	// Flush the old pte from the tlbs in the system.
-	__invlpg(pPtedata->page_aligned_rogue_ptr.pointer);
+        return PTE_ERROR;
+    }
 
-	return PTE_SUCCESS;
+    #if PRINT_PTE_REMAP_ACTIONS == 1
+    // Careful, this can be preeetty noisy if reading the whole RAM.
+    WinDbgPrint("Remapping va %p to %llx\n", pPtedata->page_aligned_rogue_ptr.pointer, Phys_addr);
+    #endif
+
+    // __debugbreak();
+
+    // Change the pte to point to the new offset.
+    pPtedata->rogue_pte->page_frame = PAGE_TO_PFN(Phys_addr);
+
+    // Flush the old pte from the tlbs in the system.
+    __invlpg(pPtedata->page_aligned_rogue_ptr.pointer);
+
+    return PTE_SUCCESS;
 }
 
 // Parse a 64 bit page table entry and print it.
@@ -139,213 +137,225 @@ void print_pte_contents(_In_ PTE * pte)
 //  PTE_SUCCESS or PTE_ERROR
 //
 // Remarks: Supports only virtual addresses that are *not* using large pages. It will return PTE_ERROR upon finding use of a large page.
-//          
+//
 //          This routine is *only* used initially to setup the rogue page and backup the original PFN/Physical address of the rogue page.
 //          This is because we only ever use one single PTE that will remap constantly the PFN.
-//          
+//
 //          Alternatives: we could 'import' MiGetPteAddress, which does pretty much the same and could be used in place of self-made virt_find_pte, sparing lots of code.
 //                        However, this self-made routine is very robust and standalone, and locating MiGetPteAddress needs code, too.
-//                        This routine is therefore considered superior to using MiGetPteAddress. 
+//                        This routine is therefore considered superior to using MiGetPteAddress.
 //
 __declspec(noinline) _IRQL_requires_max_(APC_LEVEL)
 PTE_STATUS virt_find_pte(_In_ VIRT_ADDR vaddr, _Out_  volatile PPTE * pPTE)
 {
-	CR3 cr3;
-	PPML4E pml4;
-	PPML4E pml4e;
-	PPDPTE pdpt;
-	PPDPTE pdpte;
-	PPDE pd;
-	PPDE pde;
-	PPTE pt;
-	PTE_STATUS status = PTE_ERROR;
-	PHYSICAL_ADDRESS physAddr;
+    CR3 cr3;
+    PPML4E pml4;
+    PPML4E pml4e;
+    PPDPTE pdpt;
+    PPDPTE pdpte;
+    PPDE pd;
+    PPDE pde;
+    PPTE pt;
+    PTE_STATUS status = PTE_ERROR;
+    PHYSICAL_ADDRESS physAddr;
 
-	if (pPTE) *pPTE = 0; // Initialize _Out_ variable with zero. This guarantees there is no arbitrary value on it if we later take the error path. 
-	
-	if (!(vaddr.pointer && pPTE)) goto error;
+    if (pPTE) *pPTE = 0; // Initialize _Out_ variable with zero. This guarantees there is no arbitrary value on it if we later take the error path.
 
-	WinDbgPrint("Resolving PTE for Address: %llx\n", vaddr.value);
+    if (!(vaddr.pointer && pPTE)) goto error;
 
-	// Get contents of cr3 register to get to the PML4
-	cr3.value = __readcr3();
+    WinDbgPrint("Resolving PTE for Address: %llx\n", vaddr.value);
 
-	WinDbgPrint("Kernel CR3 is %llx\n", cr3.value);
-	WinDbgPrint("Kernel PML4 is at %llx\n physical",PFN_TO_PAGE(cr3.pml4_p));
-	
-	// I don't know how this could fail, but...
-	if (!cr3.value) goto error;
+    // Get contents of cr3 register to get to the PML4
+    cr3.value = __readcr3();
 
-	// Resolve the PML4
-	physAddr.QuadPart = PFN_TO_PAGE(cr3.pml4_p);
-	pml4 = MmGetVirtualForPhysical(physAddr);
-	WinDbgPrint("kernel PML4 is at %llx\n virtual", pml4->value);
-	
-	if (!pml4) goto error;
+    WinDbgPrint("Kernel CR3 is %llx\n", cr3.value);
+    WinDbgPrint("Kernel PML4 is at %llx\n physical",PFN_TO_PAGE(cr3.pml4_p));
 
-	// Resolve the PDPT
-	pml4e = (pml4 + vaddr.pml4_index);
+    // I don't know how this could fail, but...
+    if (!cr3.value) goto error;
 
-	WinDbgPrint("PML4 entry %llx is at %llx\n", vaddr.pml4_index, pml4e->value);
+    // Resolve the PML4
+    physAddr.QuadPart = PFN_TO_PAGE(cr3.pml4_p);
+    pml4 = MmGetVirtualForPhysical(physAddr);
+    WinDbgPrint("kernel PML4 is at %llx\n virtual", pml4->value);
 
-	if (!pml4e->present) 
-	{
-		WinDbgPrint("Error, address %llx has no valid mapping in PML4:\n", vaddr.value);
-		print_pte_contents((PPTE) pml4e);
-		goto error;
-	}
-	WinDbgPrint("PML4[%llx]: %llx)\n", vaddr.pml4_index, pml4e->value);
-	
-	physAddr.QuadPart = PFN_TO_PAGE(pml4e->pdpt_p);
-	pdpt = MmGetVirtualForPhysical(physAddr);
-	WinDbgPrint("Points to PDPT:   %llx)\n", pdpt->value);
-	
-	if (!pdpt) goto error;
+    if (!pml4) goto error;
 
-	// Resolve the PDT
-	pdpte = (pdpt + vaddr.pdpt_index);
+    // Resolve the PDPT
+    pml4e = (pml4 + vaddr.pml4_index);
 
-	if (!pdpte->present) 
-	{
-		WinDbgPrint("Error, address %llx has no valid mapping in PDPT:\n", vaddr.value);
-		print_pte_contents((PPTE) pdpte);
-		goto error;
-	}
+    WinDbgPrint("PML4 entry %llx is at %llx\n", vaddr.pml4_index, pml4e->value);
 
-	if (pdpte->large_page) 
-	{
-		WinDbgPrint("Error, address %llx belongs to a 1GB huge page:\n", vaddr.value);
-		print_pte_contents((PPTE) pdpte);
-		goto error;
-	}
-	WinDbgPrint("PDPT[%llx]: %llx)\n", vaddr.pdpt_index, pdpte->value);
-	
-	physAddr.QuadPart = PFN_TO_PAGE(pdpte->pd_p);
-	pd = MmGetVirtualForPhysical(physAddr);
-	WinDbgPrint("Points to PD:     %p)\n", pd);
-	if (!pd) goto error;
+    if (!pml4e->present)
+    {
+        WinDbgPrint("Error, address %llx has no valid mapping in PML4:\n", vaddr.value);
+        print_pte_contents((PPTE) pml4e);
+        goto error;
+    }
+    WinDbgPrint("PML4[%llx]: %llx)\n", vaddr.pml4_index, pml4e->value);
 
-	// Resolve the PT
-	pde = (pd + vaddr.pd_index);
+    physAddr.QuadPart = PFN_TO_PAGE(pml4e->pdpt_p);
+    pdpt = MmGetVirtualForPhysical(physAddr);
+    WinDbgPrint("Points to PDPT:   %llx)\n", pdpt->value);
 
-	if (!pde->present) 
-	{
-		WinDbgPrint("Error, address %llx has no valid mapping in PD:\n", vaddr.value);
-		print_pte_contents((PPTE) pde);
-		goto error;
-	}
+    if (!pdpt) goto error;
 
-	if (pde->large_page)
-	{
-		WinDbgPrint("Error, address %llx belongs to a 2MB/4MB large page:\n", vaddr.value);
-		print_pte_contents((PPTE)pde);
-		goto error;
-	}
+    // Resolve the PDT
+    pdpte = (pdpt + vaddr.pdpt_index);
 
-	WinDbgPrint("PD  [%llx]: %p)\n", vaddr.pd_index, pde);
-	
-	physAddr.QuadPart = PFN_TO_PAGE(pde->pt_p);
-	pt = MmGetVirtualForPhysical(physAddr);
-	WinDbgPrint("Points to PT:     %p)\n", pt);
-	if (!pt) goto error;
+    if (!pdpte->present)
+    {
+        WinDbgPrint("Error, address %llx has no valid mapping in PDPT:\n", vaddr.value);
+        print_pte_contents((PPTE) pdpte);
+        goto error;
+    }
 
-	// Get the PTE and Page Frame
-	*pPTE = (pt + vaddr.pt_index);
+    if (pdpte->large_page)
+    {
+        WinDbgPrint("Error, address %llx belongs to a 1GB huge page:\n", vaddr.value);
+        print_pte_contents((PPTE) pdpte);
+        goto error;
+    }
+    WinDbgPrint("PDPT[%llx]: %llx)\n", vaddr.pdpt_index, pdpte->value);
 
-	if (! (*pPTE)->present) 
-	{
-		WinDbgPrint("Error, address %llx has no valid mapping in PT:\n", vaddr.value);
-		print_pte_contents((*pPTE));
-		goto error;
-	}
+    physAddr.QuadPart = PFN_TO_PAGE(pdpte->pd_p);
+    pd = MmGetVirtualForPhysical(physAddr);
+    WinDbgPrint("Points to PD:     %p)\n", pd);
+    if (!pd) goto error;
 
-	WinDbgPrint("final PTE: [%llx]: %llx)\n", vaddr.pt_index, (*pPTE)->value);
-	
-	if (!*pPTE) goto error;
+    // Resolve the PT
+    pde = (pd + vaddr.pd_index);
 
-	// Everything went well, set PTE_SUCCESS
-	status = PTE_SUCCESS;
-	
+    if (!pde->present)
+    {
+        WinDbgPrint("Error, address %llx has no valid mapping in PD:\n", vaddr.value);
+        print_pte_contents((PPTE) pde);
+        goto error;
+    }
+
+    if (pde->large_page)
+    {
+        WinDbgPrint("Error, address %llx belongs to a 2MB/4MB large page:\n", vaddr.value);
+        print_pte_contents((PPTE)pde);
+        goto error;
+    }
+
+    WinDbgPrint("PD  [%llx]: %p)\n", vaddr.pd_index, pde);
+
+    physAddr.QuadPart = PFN_TO_PAGE(pde->pt_p);
+    pt = MmGetVirtualForPhysical(physAddr);
+    WinDbgPrint("Points to PT:     %p)\n", pt);
+    if (!pt) goto error;
+
+    // Get the PTE and Page Frame
+    *pPTE = (pt + vaddr.pt_index);
+
+    if (! (*pPTE)->present)
+    {
+        WinDbgPrint("Error, address %llx has no valid mapping in PT:\n", vaddr.value);
+        print_pte_contents((*pPTE));
+        *pPTE = 0;
+        goto error;
+    }
+
+    WinDbgPrint("final PTE: [%llx]: %llx)\n", vaddr.pt_index, (*pPTE)->value);
+
+    if (!*pPTE) goto error;
+
+    // Everything went well, set PTE_SUCCESS
+    status = PTE_SUCCESS;
+
 error:
-	return status;
-	
+    return status;
+
 }
 
 
 __declspec(noinline) _IRQL_requires_max_(APC_LEVEL)
 BOOLEAN setupBackupForOriginalRoguePage(_Inout_ PPTE_METHOD_DATA pPtedata)
 {
-	// Backup original rogue PTE.
-	
-	pPtedata->page_aligned_rogue_ptr.pointer = ROGUE_PAGE_MAGICMARKER; // a pointer that features bit-accessing.
-	pPtedata->loglevel = PTE_ERR;
-	pPtedata->pte_method_is_ready_to_use = FALSE;
-	
-	if (pPtedata->page_aligned_rogue_ptr.offset)
-	{
-		DbgPrint("Warning: Setup of PTE method failed (rogue map is not pagesize aligned, this is a programming error!)\n");
-		pPtedata->pte_method_is_ready_to_use = FALSE;
-		return FALSE;
-	}
-	
-	// We only need one PTE, and just remap the PFN. 
-	// It will be take from our rogue page (which will be sacrificed temporarily in this process).
-	PTE_STATUS pte_status = virt_find_pte(pPtedata->page_aligned_rogue_ptr, &pPtedata->rogue_pte);
-	
-	if (pte_status != PTE_SUCCESS) 
-	{
-		DbgPrint("Warning: Setup of PTE method failed (virt_find_pte failed). This method will not be available!\n");
-		pPtedata->pte_method_is_ready_to_use = FALSE;
-		return FALSE;
-	}
-	
-	// Backup original rogue PFN.
-	pPtedata->original_addr = PFN_TO_PAGE(pPtedata->rogue_pte->page_frame);
-	
-	if (!pPtedata->original_addr) // not going to fail until there is some voodoo VSM magic going on. Better be safe than sorry.
-	{
-		DbgPrint("Warning: Setup of PTE method failed (no rogue page pfn??). This method will not be available!\n");
-		pPtedata->pte_method_is_ready_to_use = FALSE;
-		return FALSE;
-	}
-	
-	pPtedata->pte_method_is_ready_to_use = TRUE;
-	
-	return TRUE;
+    // Backup original rogue PTE.
+
+    pPtedata->page_aligned_rogue_ptr.pointer = ROGUE_PAGE_MAGICMARKER; // a pointer that features bit-accessing.
+    pPtedata->loglevel = PTE_ERR;
+    pPtedata->pte_method_is_ready_to_use = FALSE;
+
+    if (pPtedata->page_aligned_rogue_ptr.offset)
+    {
+        DbgPrint("Warning: Setup of PTE method failed (rogue map is not pagesize aligned, this is a programming error!)\n");
+        pPtedata->pte_method_is_ready_to_use = FALSE;
+        return FALSE;
+    }
+
+    // We only need one PTE, and just remap the PFN.
+    // It will be take from our rogue page (which will be sacrificed temporarily in this process).
+    PTE_STATUS pte_status = virt_find_pte(pPtedata->page_aligned_rogue_ptr, &pPtedata->rogue_pte);
+
+    if (pte_status != PTE_SUCCESS)
+    {
+        DbgPrint("Warning: Setup of PTE method failed (virt_find_pte failed). This method will not be available!\n");
+        pPtedata->pte_method_is_ready_to_use = FALSE;
+        return FALSE;
+    }
+
+    // Backup original rogue PFN.
+    pPtedata->original_addr = PFN_TO_PAGE(pPtedata->rogue_pte->page_frame);
+
+    if (!pPtedata->original_addr) // not going to fail until there is some voodoo VSM magic going on. Better be safe than sorry.
+    {
+        DbgPrint("Warning: Setup of PTE method failed (no rogue page pfn??). This method will not be available!\n");
+        pPtedata->pte_method_is_ready_to_use = FALSE;
+        return FALSE;
+    }
+
+    pPtedata->pte_method_is_ready_to_use = TRUE;
+
+    return TRUE;
 }
 
 __declspec(noinline) _IRQL_requires_max_(APC_LEVEL)
 VOID restoreOriginalRoguePage(_Inout_ PPTE_METHOD_DATA pPtedata)
 {
-	// Restore original rogue PTE.
-	
-	PTE_STATUS pte_status = PTE_SUCCESS;
-	
-	// Indicate not usable anymore
-	pPtedata->pte_method_is_ready_to_use = FALSE;
-	
-	pte_status = pte_remap_rogue_page(pPtedata, pPtedata->original_addr);
-	
-	if (pte_status != PTE_SUCCESS)
-	{
-		DbgPrint("Error: PTE remapping error in restore function.\n");
-		goto errorprint;
-	}
-	else
-	{
-		if ('G' == ROGUE_PAGE_MAGICMARKER[0])
-		{
-			DbgPrint("Rogue page restored: %s\n", ROGUE_PAGE_MAGICMARKER);
-			return;
-		}
-		else goto errorprint;
-	}
-	
+    // Restore original rogue PTE.
+
+    PTE_STATUS pte_status = PTE_SUCCESS;
+
+    // if pte method IS ALREADY false, then
+    if (pPtedata->pte_method_is_ready_to_use == FALSE)
+    {
+        return;
+    }
+    // ... This might for example happen in DriverEntry in the error path.
+
+    // If there is null stored don't even try to restore. null is wrong.
+    if (!pPtedata->original_addr)
+    {
+        DbgPrint("Restoring rogue page failed horribly. The backup value was null! Please reboot soon.\n");
+        return;
+    }
+
+    pte_status = pte_remap_rogue_page(pPtedata, pPtedata->original_addr);
+
+    if (pte_status != PTE_SUCCESS)
+    {
+        DbgPrint("Error: PTE remapping error in restore function.\n");
+        goto errorprint;
+    }
+    else
+    {
+        if ('G' == ROGUE_PAGE_MAGICMARKER[0])
+        {
+            DbgPrint("Rogue page restored: %s\n", ROGUE_PAGE_MAGICMARKER);
+            return;
+        }
+        else goto errorprint;
+    }
+
 errorprint:
 
-	DbgPrint("Error: uh-oh, restoring the rogue page failed. The (physical) rogue page is lost. Consider rebooting.\n");
-	
-	return;
+    DbgPrint("Error: uh-oh, restoring the rogue page failed. The (physical) rogue page is lost. Consider rebooting.\n");
+
+    return;
 }
 
 #endif

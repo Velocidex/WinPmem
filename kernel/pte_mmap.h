@@ -38,11 +38,10 @@
 
 #if defined(_WIN64)
 
-__declspec(allocate(".roguepage")) unsigned char ROGUE_PAGE_MAGICMARKER[] = "GiveSectionToWinpmem=1\n";  
+__declspec(allocate(".roguepage")) unsigned char ROGUE_PAGE_MAGICMARKER[] = "GiveSectionToWinpmem=1\n";
 // This needed to make PTE method work. ;-)
 
 #endif
-
 
 typedef union _VIRT_ADDR
 {
@@ -155,7 +154,7 @@ typedef union _PTE
 #pragma pack(pop)
 
 // Loglevels to exclude debug messages from production builds.
-typedef enum PTE_LOGLEVEL_ 
+typedef enum PTE_LOGLEVEL_
 {
   PTE_ERR = 0,
   PTE_LOG,
@@ -164,7 +163,7 @@ typedef enum PTE_LOGLEVEL_
 
 
 // Operating system independent error checking.
-typedef enum PTE_STATUS_ 
+typedef enum PTE_STATUS_
 {
   PTE_SUCCESS = 0,
   PTE_ERROR,
@@ -173,13 +172,13 @@ typedef enum PTE_STATUS_
 } PTE_STATUS;
 
 
-typedef struct _PTE_METHOD_DATA 
-{ 
-	BOOLEAN pte_method_is_ready_to_use;
-	VIRT_ADDR page_aligned_rogue_ptr;
-	volatile PPTE rogue_pte;
-	PHYS_ADDR original_addr;
-	PTE_LOGLEVEL loglevel;
+typedef struct _PTE_METHOD_DATA
+{
+    BOOLEAN pte_method_is_ready_to_use;
+    VIRT_ADDR page_aligned_rogue_ptr;
+    volatile PPTE rogue_pte;
+    PHYS_ADDR original_addr;
+    PTE_LOGLEVEL loglevel;
 } PTE_METHOD_DATA, *PPTE_METHOD_DATA;
 
 

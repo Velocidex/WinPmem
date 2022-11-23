@@ -5,7 +5,7 @@
 #include <sal.h>
 #include "log_message.h"
 
-_IRQL_requires_max_(PASSIVE_LEVEL) 
+_IRQL_requires_max_(PASSIVE_LEVEL)
 VOID writeToEventLog(
     _In_                             PDRIVER_OBJECT DriverObject,
     _In_                             UCHAR MajorFunctionCode,
@@ -17,8 +17,8 @@ VOID writeToEventLog(
     _In_                             ULONG LengthOfInsert2,
     _In_reads_bytes_opt_(LengthOfInsert2) PWCHAR Insert2
     );
-	
-_IRQL_requires_max_(PASSIVE_LEVEL) 
+
+_IRQL_requires_max_(PASSIVE_LEVEL)
 NTSTATUS setupEventLogging(_In_ PUNICODE_STRING RegistryPath);
 
 #ifdef ALLOC_PRAGMA

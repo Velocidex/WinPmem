@@ -30,8 +30,8 @@ void GetKPCR(_Inout_ PWINPMEM_MEMORY_INFO info);
 #ifdef ALLOC_PRAGMA
 
 #pragma alloc_text( PAGE , KernelGetModuleBaseByPtr )
-#pragma alloc_text( PAGE , KernelGetProcAddress ) 
-#pragma alloc_text( PAGE , GetKPCR ) 
+#pragma alloc_text( PAGE , KernelGetProcAddress )
+#pragma alloc_text( PAGE , GetKPCR )
 
 #endif
 

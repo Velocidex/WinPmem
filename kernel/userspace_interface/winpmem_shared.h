@@ -4,7 +4,7 @@
 // Contains all the data shared between the driver and the usermode part.
 
 
-#define PMEM_DRIVER_VERSION "2.0.2"
+#define PMEM_DRIVER_VERSION "3.0.1"
 #define PMEM_DEVICE_NAME_ASCII "pmem"  // the name for normal userspace usage.
 #define PMEM_DEVICE_NAME L"pmem"       // preferred by the driver.
 #define PMEM_SERVICE_NAME TEXT("pmem") // and this is finally the service name.
@@ -49,7 +49,6 @@ typedef struct _WINPMEM_MEMORY_INFO
   #else
   LARGE_INTEGER KPCR[32];
   #endif
-  // xxx: For what exactly do we need all those KPCRs, anyway? Sure, they look nice.
 
   LARGE_INTEGER PfnDataBase;
   LARGE_INTEGER PsLoadedModuleList;
@@ -57,18 +56,18 @@ typedef struct _WINPMEM_MEMORY_INFO
 
   // END DEPRECATED.
 
-  // The address of the NtBuildNumber integer - could be used to find the kernel base. 
+  // The address of the NtBuildNumber integer - could be used to find the kernel base.
   LARGE_INTEGER NtBuildNumberAddr;
 
   // As the driver is extended we can add fields here maintaining
   // driver alignment..
-  LARGE_INTEGER Padding[0xfe]; 
+  LARGE_INTEGER Padding[0xfe];
 
   LARGE_INTEGER NumberOfRuns;
 
   // A Null terminated array of ranges.
   PHYSICAL_MEMORY_RANGE Run[NUMBER_OF_RUNS];
-  
+
 } WINPMEM_MEMORY_INFO, *PWINPMEM_MEMORY_INFO;
 
 #pragma pack(pop)
