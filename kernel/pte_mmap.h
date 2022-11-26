@@ -143,7 +143,7 @@ typedef union _PTE
     unsigned __int64 cache_disable  : 1;
     unsigned __int64 accessed       : 1;
     unsigned __int64 dirty          : 1;
-    unsigned __int64 pat            : 1;
+    unsigned __int64 large_page     : 1;    // PAT/PS
     unsigned __int64 global         : 1;
     unsigned __int64 ignored_1      : 3;
     unsigned __int64 page_frame     :40;

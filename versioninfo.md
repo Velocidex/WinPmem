@@ -1,30 +1,32 @@
-### 20. Nov  2022, 3.0.1 *Alpha*
+### 3.0.x *alpha version*
 
-Compile latest source code (3.0.1 *Alpha* version) in two steps: 
+Compile latest source code (3.0.x *alpha* version) in two steps:
 
-1. `mc log_message.mc` 
+1. `mc log_message.mc`
 
 This generates three files needed for eventlog writing: log_message.rc, log_message.h, and MSG00001.bin.
 (This step is also described at https://learn.microsoft.com/en-us/windows-hardware/drivers/kernel/defining-custom-error-types , "Compiling the Error Message Text File")
 
 Note: eventlog writing can be disabled during development phase. The precompiler switch is found in precompiler.h (all precompiler switches go there now), but you will also need to remove the statement for using the message log ressource file in the vcxproj. Then step one can be skipped.
 
-2. `msbuild /p:configuration=Release/Debug /p:platform=Win32/x64 winpmem.vcxproj`. Or use VS. The build environment must be configured for kernel driver compilation. This is also true for the usermoder testing program.
+2. `msbuild /p:configuration=Release/Debug /p:platform=Win32/x64 winpmem.vcxproj`. Or use VS. The build environment must be configured for kernel driver compilation. This is also true for the usermode testing program.
 
-#### Installing: 
+#### Installing:
 
 Do not expect a new compiled release with a signed driver again, although this might be possible in future.
 You could use testsigning, and load the driver with any suitable tool.
 
-#### Works: 
+#### Works:
 
-* Win7, (Win8), Win10, Win10 22H2, (2.0.2 not tested with core isolation, 2.0.1 worked). Win11 should work (untested).
+* Win7, (Win8), Win10, Win10 22H2, Win11.
+* Accessing read-only physical pages while under core isolation will make the secure kernel return STATUS_ACCESS_DENIED. Winpmem will handle this gracefully.
 
-#### Testing: 
+#### Testing/using:
 
-This is a devel version. There is a simplified usermode code to interface with Winpmem and test its functionality in the 'testing' folder. Compiling and using the mini tool works, too, but please make sure to replace the two years old original driver binaries (*x86.sys and *64.sys) with the fresh build. 
+This is a devel version. There is simplified usermode code (in 'testing') to directly interface with Winpmem and test its functionality.
+Compiling and using the mini tool works, too, but please make sure to replace the two years old original driver binaries (winpmem_x86.sys and winpmem_64.sys) with the new drivers.
 
-Please refer to 3.0.1 when reporting bugs and issues for the devel version.
+Please refer to 3.0.x when reporting bugs and issues for the devel version.
 
 #### Limitations:
 

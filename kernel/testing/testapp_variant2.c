@@ -19,43 +19,39 @@ NTSTATUS reverseQuery(_In_ HANDLE winpmemHandle, _In_ UINT64 VA_Addr, _Out_ PUIN
 BOOLEAN openDevice(_Out_ PHANDLE pDevice, _In_ PWCHAR name, _In_ ACCESS_MASK DesiredAccess, _In_ ULONG ShareAccess);
 BOOLEAN doPhysicalReadFromWinpmem(_In_ HANDLE winpmemHandle, _Out_ unsigned char * buffer, _In_ ULONG buffersize, _In_ PLARGE_INTEGER PhysAddr, _In_ ULONG mode);
 
+
 void main(_In_ ULONG argc, _In_reads_(argc) PCHAR argv[])
 {
     NTSTATUS status = STATUS_SUCCESS;
 
     // Please choose one of the three methods.
-    ULONG mode = PMEM_MODE_PTE; // PMEM_MODE_PHYSICAL;
+    ULONG mode = PMEM_MODE_PHYSICAL;
 
     HANDLE winpmemHandle = NULL;
     BOOLEAN bResult = TRUE;
-    char * hello = "Helloo!";  // this makes 8, nice for demo printing.
     LARGE_INTEGER PhysAddr;
     unsigned __int64 qword = 0;
-    unsigned char * helloPtr = NULL;
-    ULONG_PTR hello_address = (ULONG_PTR) hello;
+    ULONG_PTR virtualAddress = 0;
 
     UNREFERENCED_PARAMETER(argc);
     UNREFERENCED_PARAMETER(argv);
 
     // Alternative testing:
 
-    /*
     if (argc < 2)
     {
-        printf("Usage: %s 0xPhysicalAddress.\n", argv[0]);
+        printf("Usage: %s 0xVirtualAddress.\n", argv[0]);
         return;
     }
-    PhysAddr.QuadPart = _strtoui64(argv[1], NULL, 16);
+    virtualAddress = _strtoui64(argv[1], NULL, 16);
 
-    if (!PhysAddr.QuadPart)
+    if (!virtualAddress)
     {
-        printf("Not going to use physical address 0. This is foolish. :o)\n");
+        printf("Not going to use virtual address 0. :o)\n");
         return;
     }
-    */
 
-    // For using PhysAddr directly in the Read, skip the reverse search query.
-
+    // For using PhysAddr directly in the Read, skipping the reverse search query.
 
     bResult = openDevice(&winpmemHandle, L"\\Device\\pmem",
                         FILE_GENERIC_READ | FILE_GENERIC_WRITE | SYNCHRONIZE,
@@ -84,8 +80,8 @@ void main(_In_ ULONG argc, _In_reads_(argc) PCHAR argv[])
     printf("Mode has been set to %u.\n", mode);
 
     PhysAddr.QuadPart = 0;
-    status = reverseQuery(winpmemHandle, hello_address, (PUINT64) &PhysAddr);
-    // hello is not at all page-aligned. It's Winpmem's task to do it right.
+    status = reverseQuery(winpmemHandle, virtualAddress, (PUINT64) &PhysAddr);
+
     // We expect from Winpmem to return the right Physical address (including the correct offset).
 
     if (status != STATUS_SUCCESS)
@@ -116,16 +112,6 @@ void main(_In_ ULONG argc, _In_reads_(argc) PCHAR argv[])
     if (bResult)
     {
         printf("Winpmem says the (QWORD) content of physical address %llx is: %llx.\n", PhysAddr.QuadPart,qword);
-        helloPtr = (unsigned char *) &qword;
-        if ((helloPtr[0] == 'H') && (helloPtr[7] == 0))
-        {
-            printf("Yep. Seems to be my hello string! :-)\n");
-            printf("'%s'\n",helloPtr);
-        }
-        else
-        {
-            printf("Didn't work. Sorry Winpmem, try harder! :-(\n");
-        }
     }
 
 exit:

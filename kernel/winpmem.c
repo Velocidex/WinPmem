@@ -277,7 +277,7 @@ NTSTATUS wddDispatchDeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP
         except(EXCEPTION_EXECUTE_HANDLER)
         {
             status = GetExceptionCode();
-            DbgPrint("Error: 0x%08x, probe in Device io dispatch, Inbuffer. A naughty process sent us a bad/nonexisting buffer.\n", status);
+            DbgPrint("Error: 0x%08x, IOCTL_SET_MODE, Inbuffer. A naughty process sent us a bad/nonexisting buffer.\n", status);
 
             status = STATUS_INVALID_PARAMETER; // Naughty usermode process, this is your fault.
             goto exit;
@@ -340,9 +340,9 @@ NTSTATUS wddDispatchDeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP
 
 
 #if PMEM_WRITE_ENABLED == 1
-    case IOCTL_WRITE_ENABLE:
+    case IOCTL_WRITE_ENABLE: // Actually this is a switch. You can turn write support off again.
     {
-        // We do not access any in/out buffers here.
+        // No in/outbuffers needed.
         ext->WriteEnabled = !ext->WriteEnabled;
         WinDbgPrint("Write mode is %u. Do you know what you are doing?\n", ext->WriteEnabled);
         status = STATUS_SUCCESS;
@@ -378,7 +378,7 @@ NTSTATUS wddDispatchDeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP
             except(EXCEPTION_EXECUTE_HANDLER)
             {
                 status = GetExceptionCode();
-                DbgPrint("Error: 0x%08x, probe in reverse search query. A naughty process sent us a bad/nonexisting buffer.\n", status);
+                DbgPrint("Error: 0x%08x, inbuffer in reverse query. A naughty process sent us a bad/nonexisting buffer.\n", status);
 
                 status = STATUS_INVALID_PARAMETER; // Naughty usermode process, this is your fault.
                 goto exit;
@@ -403,15 +403,31 @@ NTSTATUS wddDispatchDeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP
 
             if (pte_status != PTE_SUCCESS)
             {
+                // Remember todo: reverse search currently returns error on large pages (because not implemented).
                 DbgPrint("Reverse search found nothing: no present page for %llx. Sorry.\n", In_VA.value);
                 Out_PhysAddr = 0;
             }
             else
             {
-                Out_PhysAddr = ( PFN_TO_PAGE(pPTE->page_frame) ) + page_offset;
+                if (pPTE->present) // But virt_find_pte checked that already.
+                {
+                    if (!pPTE->large_page)
+                    {
+                        Out_PhysAddr = ( PFN_TO_PAGE(pPTE->page_frame) ) + page_offset;  // normal calculation.
+                    }
+                    else
+                    {
+                        Out_PhysAddr = ( PFN_TO_PAGE(( pPTE->page_frame +  In_VA.pt_index)) ) + page_offset; // Large page calculation.
+                    }
+                }
+                else
+                {
+                    DbgPrint("Valid bit not set in PTE. Sorry.\n");
+                    Out_PhysAddr = 0;
+                }
             }
 
-            // Because NEITHER buffer wasn't locked down.
+            // Because NEITHER buffer wasn't locked down:
             try
             {
                 ProbeForWrite( outBuffer, sizeof(UINT64), sizeof( UCHAR ) );
@@ -430,7 +446,7 @@ NTSTATUS wddDispatchDeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP
 
             Irp->IoStatus.Information = sizeof(UINT64);
 
-        } // else pte_data.pte_method_is_ready_to_use=yes
+        } // end of  else pte_data.pte_method_is_ready_to_use=yes
 
         #else
 
@@ -518,7 +534,6 @@ NTSTATUS DriverEntry (IN PDRIVER_OBJECT DriverObject,
     DriverObject->FastIoDispatch->SizeOfFastIoDispatch = sizeof(FAST_IO_DISPATCH);
     DriverObject->FastIoDispatch->FastIoRead = pmemFastIoRead;
 
-
     #if PMEM_WRITE_ENABLED == 1
     {
     // Make sure that the drivers with write support are clearly marked as such.
@@ -603,3 +618,4 @@ NTSTATUS DriverEntry (IN PDRIVER_OBJECT DriverObject,
     error:
     return STATUS_UNSUCCESSFUL;
 }
+

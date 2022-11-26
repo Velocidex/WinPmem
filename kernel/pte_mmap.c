@@ -46,6 +46,7 @@ BOOLEAN setupBackupForOriginalRoguePage(_Inout_ PPTE_METHOD_DATA pPtedata);
 __declspec(noinline) _IRQL_requires_max_(APC_LEVEL)
 VOID restoreOriginalRoguePage(_Inout_ PPTE_METHOD_DATA pPtedata);
 
+
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text( NONPAGED , pte_remap_rogue_page )
 #pragma alloc_text( NONPAGED , print_pte_contents )
@@ -53,6 +54,7 @@ VOID restoreOriginalRoguePage(_Inout_ PPTE_METHOD_DATA pPtedata);
 #pragma alloc_text( NONPAGED , setupBackupForOriginalRoguePage )
 #pragma alloc_text( NONPAGED , restoreOriginalRoguePage)
 #endif
+
 
 // Edit the page tables to relink a virtual address to a specific physical page.
 //
@@ -108,7 +110,7 @@ void print_pte_contents(_In_ PTE * pte)
               "\tcache_disable:%llx\n"
               "\taccessed:     %llx\n"
               "\tdirty:        %llx\n"
-              "\tpat:          %llx\n"
+              "\tpat/ps:       %llx\n"
               "\tglobal:       %llx\n"
               "\txd:           %llx\n"
               "\tpfn: %010llx",
@@ -120,7 +122,7 @@ void print_pte_contents(_In_ PTE * pte)
               (unsigned __int64)pte->cache_disable,
               (unsigned __int64)pte->accessed,
               (unsigned __int64)pte->dirty,
-              (unsigned __int64)pte->pat,
+              (unsigned __int64)pte->large_page,
               (unsigned __int64)pte->global,
               (unsigned __int64)pte->xd,
               (unsigned __int64)pte->page_frame);
@@ -156,6 +158,7 @@ PTE_STATUS virt_find_pte(_In_ VIRT_ADDR vaddr, _Out_  volatile PPTE * pPTE)
     PPDE pd;
     PPDE pde;
     PPTE pt;
+    PPTE final_pPTE = 0;
     PTE_STATUS status = PTE_ERROR;
     PHYSICAL_ADDRESS physAddr;
 
@@ -163,13 +166,13 @@ PTE_STATUS virt_find_pte(_In_ VIRT_ADDR vaddr, _Out_  volatile PPTE * pPTE)
 
     if (!(vaddr.pointer && pPTE)) goto error;
 
-    WinDbgPrint("Resolving PTE for Address: %llx\n", vaddr.value);
+    WinDbgPrint("Resolving PTE for Address: %llx.\nPrinting ambiguous names: WinDbg terminus(first)/normal terminus(second).\n", vaddr.value);
 
     // Get contents of cr3 register to get to the PML4
     cr3.value = __readcr3();
 
-    WinDbgPrint("Kernel CR3 is %llx\n", cr3.value);
-    WinDbgPrint("Kernel PML4 is at %llx\n physical",PFN_TO_PAGE(cr3.pml4_p));
+    WinDbgPrint("Kernel CR3 is %llx.\n", cr3.value);
+    WinDbgPrint("Kernel CR3.pml4_p: %llx.\n", cr3.pml4_p);
 
     // I don't know how this could fail, but...
     if (!cr3.value) goto error;
@@ -177,14 +180,12 @@ PTE_STATUS virt_find_pte(_In_ VIRT_ADDR vaddr, _Out_  volatile PPTE * pPTE)
     // Resolve the PML4
     physAddr.QuadPart = PFN_TO_PAGE(cr3.pml4_p);
     pml4 = MmGetVirtualForPhysical(physAddr);
-    WinDbgPrint("kernel PML4 is at %llx\n virtual", pml4->value);
+    WinDbgPrint("kernel PX/PML4 base is at %llx physical, and %p virtual.\n", PFN_TO_PAGE(cr3.pml4_p), pml4);
 
     if (!pml4) goto error;
 
     // Resolve the PDPT
     pml4e = (pml4 + vaddr.pml4_index);
-
-    WinDbgPrint("PML4 entry %llx is at %llx\n", vaddr.pml4_index, pml4e->value);
 
     if (!pml4e->present)
     {
@@ -192,11 +193,11 @@ PTE_STATUS virt_find_pte(_In_ VIRT_ADDR vaddr, _Out_  volatile PPTE * pPTE)
         print_pte_contents((PPTE) pml4e);
         goto error;
     }
-    WinDbgPrint("PML4[%llx]: %llx)\n", vaddr.pml4_index, pml4e->value);
+    WinDbgPrint("PXE/PML4[%llx] (at %p): %llx\n", vaddr.pml4_index, pml4e, pml4e->value);
 
     physAddr.QuadPart = PFN_TO_PAGE(pml4e->pdpt_p);
     pdpt = MmGetVirtualForPhysical(physAddr);
-    WinDbgPrint("Points to PDPT:   %llx)\n", pdpt->value);
+    WinDbgPrint("Points to PP/PDPT base: %p.\n", pdpt);
 
     if (!pdpt) goto error;
 
@@ -216,11 +217,12 @@ PTE_STATUS virt_find_pte(_In_ VIRT_ADDR vaddr, _Out_  volatile PPTE * pPTE)
         print_pte_contents((PPTE) pdpte);
         goto error;
     }
-    WinDbgPrint("PDPT[%llx]: %llx)\n", vaddr.pdpt_index, pdpte->value);
+    WinDbgPrint("PPE/PDPT[%llx] (at %p): %llx.\n", vaddr.pdpt_index, pdpte, pdpte->value);
 
     physAddr.QuadPart = PFN_TO_PAGE(pdpte->pd_p);
     pd = MmGetVirtualForPhysical(physAddr);
-    WinDbgPrint("Points to PD:     %p)\n", pd);
+    WinDbgPrint("Points to PD base: %p.\n", pd);
+
     if (!pd) goto error;
 
     // Resolve the PT
@@ -235,32 +237,36 @@ PTE_STATUS virt_find_pte(_In_ VIRT_ADDR vaddr, _Out_  volatile PPTE * pPTE)
 
     if (pde->large_page)
     {
-        WinDbgPrint("Error, address %llx belongs to a 2MB/4MB large page:\n", vaddr.value);
-        print_pte_contents((PPTE)pde);
-        goto error;
+        final_pPTE = (PPTE) pde; // this is basically like a PTE, just like one tier level above. Though not 100%.
+        *pPTE = final_pPTE;
+        WinDbgPrint("Final 'PTE' --large page PDE-- (at %p) : %llx.\n", final_pPTE, final_pPTE->value);
+
+        return PTE_SUCCESS;
     }
 
-    WinDbgPrint("PD  [%llx]: %p)\n", vaddr.pd_index, pde);
+    WinDbgPrint("PDE/PD[%llx] (at %p): %llx.\n", vaddr.pd_index, pde, pde->value);
 
     physAddr.QuadPart = PFN_TO_PAGE(pde->pt_p);
     pt = MmGetVirtualForPhysical(physAddr);
-    WinDbgPrint("Points to PT:     %p)\n", pt);
+    WinDbgPrint("Points to PT base: %p.\n", pt);
+
     if (!pt) goto error;
 
     // Get the PTE and Page Frame
-    *pPTE = (pt + vaddr.pt_index);
+    final_pPTE = (pt + vaddr.pt_index);
 
-    if (! (*pPTE)->present)
+    if (!final_pPTE) goto error;
+
+    if (!final_pPTE->present)
     {
         WinDbgPrint("Error, address %llx has no valid mapping in PT:\n", vaddr.value);
-        print_pte_contents((*pPTE));
-        *pPTE = 0;
+        print_pte_contents( final_pPTE );
         goto error;
     }
 
-    WinDbgPrint("final PTE: [%llx]: %llx)\n", vaddr.pt_index, (*pPTE)->value);
+    WinDbgPrint("final PTE [%llx] (at %p): %llx.\n", vaddr.pt_index, final_pPTE, final_pPTE->value);
 
-    if (!*pPTE) goto error;
+    *pPTE = final_pPTE;
 
     // Everything went well, set PTE_SUCCESS
     status = PTE_SUCCESS;
