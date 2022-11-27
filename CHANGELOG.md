@@ -1,3 +1,33 @@
+### 27. Nov 2022, 3.0.3 *alpha*
+
+Now new bugs or issues detected, only small improvements, testing (and knowledge increase).
+
+* **Important note**: the iospace method cannot be used as general purpose physical reading method. (For details, please refer to my comments in read.c.) In particular, it should urgently be thrown out of the mini tool. (Applicable also for the 2.0.1 version in the master branch.) It can cause hazard to use it in this purpose.
+* 3.0.3: the iospace method has been removed from the usermode mini tool, because it is not applicable for the creation of complete memory dumps. It is kept as a method because of other useful use cases, just not complete memory dumps.
+* Added another testing variant source code file.
+* DbgPrint: in the three read methods, it does not make sense to print the VA of the source buffer. This is not the target VA, the target VA is unknown.
+* This is exactly the problem: the PFN is all that is known, and that's not exactly much. On read error, getting ACCESS_DENIED doesn't tell anything about the true reason. The reason would be an important clue. If known, maybe some more pages could be made read.
+* Ongoing research on read errors: catched 'resisting' nt!ZwMapViewOfSection nonzero mappedbuffers in flagranti, with PTE indicating that it's totally valid, while unreadable. (I could not have used the PTE method for this, no VA...) I have always been zeroing out the mapped buffer variable faithfully before calling nt!ZwMapViewOfSection, so the unreadable returned VA addresses are really originating from nt!ZwMapViewOfSection, and as said, the PTE says the page is valid. But not even KD is able to read from that. There ought to be a reason why nt!ZwMapViewOfSection is returning a seemingly valid address with sane looking PTE.
+
+```
+0: kd> !pte 248`9ac2b000
+                                           VA 000002489ac2b000
+PXE at FFFFD2E974BA5020    PPE at FFFFD2E974A04910    PDE at FFFFD2E9409226B0    PTE at FFFFD281244D6158
+contains 0A000000047A8867  contains 0A00000004AA9867  contains 0A000000456B1867  contains 8A0000000C3CB025
+pfn 47a8      ---DA--UWEV  pfn 4aa9      ---DA--UWEV  pfn 456b1     ---DA--UWEV  pfn c3cb      ----A--UR-V
+```
+
+Looks valid? Yes. Readable? **No**.
+
+```
+0: kd> !db c3cb000
+Physical memory read at c3cb000 failed
+
+0: kd> db 000002489ac2b000
+00000248`9ac2b000  ?? ?? ?? ?? ?? ?? ?? ??-?? ?? ?? ?? ?? ?? ?? ??  ????????????????
+```
+
+
 ### 26. Nov 2022, 3.0.2 *Alpha*
 
 * The testing program: GENERIC_RED/GENERIC_WRITE => FILE_GENERIC_READ/FILE_GENERIC_WRITE. Otherwise won't work on Win11.

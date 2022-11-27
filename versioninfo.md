@@ -31,7 +31,7 @@ Please refer to 3.0.x when reporting bugs and issues for the devel version.
 #### Limitations:
 
 * WinXP fell off the support, because of NX allocations (and other pitfalls). Archaeologists will need to adapt the source code first. (The SOURCES and MAKEFILE are kept for this reason.)
-* IOspace method on Hyper-V VM using Win10 *and* KD might fail. There was a bug with KD and Hyper-V.
+* IOspace method **is not** for general purpose reading. Use this method *only* in appropriate scenarios (with locked pages).
 * PTE method has been implemented only for x64.
 * Microsoft bug/glitch: on Hyper-V, the longer a VM runs with the "Dynamic memory" feature enabled, the more fragmentation occurs on the memory range runs. (Up to a thousands). We cannot fix that.
 

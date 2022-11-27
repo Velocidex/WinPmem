@@ -110,7 +110,7 @@
   </ItemDefinitionGroup>
 
   <ItemGroup>
-    <ClCompile Include="testapp.c" />
+    <ClCompile Include="testapp3.c" />
   </ItemGroup>
 
   <ItemGroup>

@@ -306,9 +306,9 @@ __int64 WinPmem::set_acquisition_mode(unsigned __int32 mode)
         BOOL result = FALSE;
 
         // let's do some sanity checking first.
-        if (! ((mode == PMEM_MODE_IOSPACE) || (mode == PMEM_MODE_PHYSICAL) || (mode == PMEM_MODE_PTE)) )
+        if (! ((mode == PMEM_MODE_PHYSICAL) || (mode == PMEM_MODE_PTE)) )
         {
-                Log(TEXT("This mode does not exist!"));
+                Log(TEXT("This mode is not available!"));
                 return -1;
         }
 

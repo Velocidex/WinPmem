@@ -58,6 +58,7 @@ BOOLEAN setupPhysMemSectionHandle(_Out_ PHANDLE pMemoryHandle)
 // Method I.
 // This method is thread-safe and does not need protection of a mutex.
 // This routine requires PASSIVE LEVEL and can't work under a mutex.
+// General purpose reading: yes.
 _IRQL_requires_max_(PASSIVE_LEVEL)
 ULONG PhysicalMemoryPartialRead(_In_ HANDLE memoryHandle,
                                 _In_ LARGE_INTEGER physAddr,
@@ -89,6 +90,8 @@ ULONG PhysicalMemoryPartialRead(_In_ HANDLE memoryHandle,
 
     // From performance-technical view it seems unwise to mapview for each tiny read, but ZwMapViewOfSection(wholeRAM) is a very bad idea, in many terms.
     // Thus, this is a suitable safe-but-slow method for reading only portions of (RAM-backed) RAM. This method is not optimal for reading the whole RAM (but it can be used).
+    // Originally, the idea might have been to hand over the mapview to a usermode program. (This is also why ZwMapViewOfSection returns usermode addresses...) 
+    // Nowadays, ZwReadFile might be a better replacement.
 
     // =warning=
     // On a Windows with Hyper-V layer/VSM  (or whatever you want to name it, for me it's simply the HV layer beneath the OS.)
@@ -99,14 +102,14 @@ ULONG PhysicalMemoryPartialRead(_In_ HANDLE memoryHandle,
     // The approach: we very carefully check if it's readable and if yes, we return the bytes.
     // Otherwise we return immediately with a read error.
 
-    try // Hyper-v/VSM induced possible read error
+    try // Might not be readable for various reasons.
     {
-        RtlCopyMemory(buf, mapped_buffer + page_offset, to_read);  // ProbeForRead would not help here. This is kernel VA already. We must face the fact that we might fail the read.
+        RtlCopyMemory(buf, mapped_buffer + page_offset, to_read);
     }
     except(EXCEPTION_EXECUTE_HANDLER)
     {
         ntstatus = GetExceptionCode();
-        DbgPrint("Warning: read error %08x (method: phys mem device): unable to read %u bytes from %p, doing padding instead.\n", ntstatus, to_read, mapped_buffer+page_offset);
+        DbgPrint("Warning: read error %08x (method: phys mem device): unable to read %u bytes from %p.\n", ntstatus, to_read, mapped_buffer+page_offset);
         goto error;
     }
 
@@ -141,17 +144,31 @@ ULONG MapIOPagePartialRead(_In_ LARGE_INTEGER physAddr, _Inout_ unsigned char * 
     ViewBase.QuadPart = physAddr.QuadPart - page_offset;
 
     // =warning=
-    // On a Windows with Hyper-V layer/VSM  (or whatever you want to name it, for me it's simply the HV layer beneath the OS.)
-    // the host OS is above the Hyper-V layer. The HV (which is below the OS) can
-    // and will block certain reads from certain memory locations if "it" does not want it.
-    // It is happening outside of the "OS". As a rather profane kernel driver, we must live with it
-    // and be prepared to be unable to read from a memory location, without any "sane" reason. (like, "out of nothing")
-    // The approach: we very carefully check if it's readable and if yes, we return the bytes.
-    // Otherwise we return immediately with a read error.
+    
+    // You cannot use the MmMapIoSpace method just like the others. This method serves a special purpose (DMA, mostly).
+    // A formal requirement is: the physical address needs to be resident *and* locked. (Emphasis on the second.)
+    // Winpmem cannot lock the page for you, because the VA is unknown. (If there is a VA at all.)
+    // This could be different if the invoker also handed over the corresponding VA. 
+    // Then Winpmem could try to lock the VA.
+    
+    // If used as general purpose reading method, you might get this (0x1a, 0x1233) BSOD:
+    
+    /*
+    https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/bug-check-0x1a--memory-management , subtype 0x1233:
+    "A driver tried to map a physical memory page that was not locked. This is illegal 
+    because the contents or attributes of the page can change at any time. This is a bug 
+    in the code that made the mapping call. Parameter 2 is the page frame number of the 
+    physical page that the driver attempted to map."
+    */
+    
+    // As an example, in the last triggered BSOD, the PFN in parameter 2 was 0x15, 
+    // IT was valid and readable, but not locked. 
+    
+    // Summary: this method can be used for special scenarios (yes, useful), but not for general purpose reading. ;-)
 
-    try // Hyper-v/VSM induced possible read error
+    try // Might not be readable for various reasons.
     {
-        mapped_buffer = MmMapIoSpace(ViewBase, PAGE_SIZE, MmCached);  // <= may fail and BSOD on a machine with Hyper-V layer / "VSM".
+        mapped_buffer = MmMapIoSpace(ViewBase, PAGE_SIZE, MmCached);  // <= just DON'T on unlocked pages.
 
         if (mapped_buffer)
         {
@@ -159,14 +176,14 @@ ULONG MapIOPagePartialRead(_In_ LARGE_INTEGER physAddr, _Inout_ unsigned char * 
         }
         else
         {
-            DbgPrint("Error (method: map I/O): zero buffer returned from MmMapIoSpace (wanted to read %u bytes on %p), doing padding instead.\n", to_read, mapped_buffer+page_offset); // real error
+            DbgPrint("Error (method: map I/O): zero buffer returned from MmMapIoSpace (wanted to read %u bytes on %p).\n", to_read, mapped_buffer+page_offset); // real error
             return 0;
         }
     }
     except(EXCEPTION_EXECUTE_HANDLER)
     {
         ntStatus = GetExceptionCode();
-        DbgPrint("Warning: read error %08x (method: map I/O): unable to read %u bytes from %p, doing padding instead.\n", ntStatus, to_read, mapped_buffer+page_offset);
+        DbgPrint("Warning: read error %08x (method: map I/O): unable to read %u bytes from %p.\n", ntStatus, to_read, mapped_buffer+page_offset);
         return 0;
     }
 
@@ -183,6 +200,7 @@ ULONG MapIOPagePartialRead(_In_ LARGE_INTEGER physAddr, _Inout_ unsigned char * 
 // Method III.
 // !! This method is not thread-safe and crucially requires protection of a mutex.
 // Read a single page using direct PTE mapping.
+// General purpose reading: yes.
 _IRQL_requires_max_(APC_LEVEL)
 ULONG PTEMmapPartialRead(_Inout_ PPTE_METHOD_DATA pPtedata, _In_ LARGE_INTEGER physAddr, _Inout_ unsigned char * buf, _In_ ULONG count)
 {
@@ -214,14 +232,14 @@ ULONG PTEMmapPartialRead(_Inout_ PPTE_METHOD_DATA pPtedata, _In_ LARGE_INTEGER p
         // The approach: we very carefully check if it's readable and if yes, we return the bytes.
         // Otherwise we return immediately with a read error.
 
-        try  // Hyper-v/VSM induced possible read error
+        try  // Might not be readable for various reasons.
         {
-            RtlCopyMemory(buf, toxic_source, to_read); // copy content to usermode NEITHER buffer.
+            RtlCopyMemory(buf, toxic_source, to_read); // copy from rogue page to usermode NEITHER buffer.
 
         } except(EXCEPTION_EXECUTE_HANDLER)
         {
             ntStatus = GetExceptionCode();
-            DbgPrint("Warning: read error %08x (method: PTE remap): unable to read %u bytes from %p for %llx, doing padding instead.\n", ntStatus, to_read, toxic_source, viewPage.QuadPart);
+            DbgPrint("Warning: read error %08x (method: PTE remap): unable to read %u bytes from %llx.\n", ntStatus, to_read, viewPage.QuadPart);
             return 0;
         }
         result = to_read;
@@ -260,7 +278,9 @@ NTSTATUS DeviceRead(_In_ PDEVICE_EXTENSION extension,
 
     while (*total_read < howMuchToRead)
     {
-        current_read_window =  min(PAGE_SIZE, howMuchToRead - *total_read);  // read windows is either PAGE_SIZE (maximum), or a remaining rest: total read minus all that has already been read.
+        current_read_window =  min(PAGE_SIZE, howMuchToRead - *total_read);  
+        // read windows is either PAGE_SIZE (maximum), or a remaining rest: 
+        // total read minus all that has already been read.
 
         // Allocate an mdl. Must be freed afterwards (if the call succeeds).
         mdl = IoAllocateMdl(toxic_buffer_cursor, current_read_window,  FALSE, TRUE, NULL); // <= toxic buffer address increases each time in the loop.
@@ -347,7 +367,7 @@ NTSTATUS DeviceRead(_In_ PDEVICE_EXTENSION extension,
         toxic_buffer_cursor += bytes_read;
         *total_read += bytes_read;
 
-    }
+    } // while loop
 
 end:
     #if defined(_WIN64)

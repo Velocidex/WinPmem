@@ -36,7 +36,6 @@ void help(TCHAR* ExeName)
         L"        Extract driver to this file (Default use random name).\n"
         L"  -h    Display this help.\n"
         L"  -w    Turn on write mode.\n"
-        L"  -0    Use MmMapIoSpace method.\n"
         L"  -1    Use \\\\Device\\PhysicalMemory method (Default for 32bit OS).\n"
         L"  -2    Use PTE remapping (AMD64 only - Default for 64bit OS).\n"
         L"\n");
@@ -114,12 +113,7 @@ int _tmain(int argc, _TCHAR* argv[])
                     if (!driver_filename) goto error;
                 }
                 break;
-
-                case '0':
-                {
-                    mode = PMEM_MODE_IOSPACE;
-                    break;
-                }
+                
                 case '1':
                 {
                     mode = PMEM_MODE_PHYSICAL;

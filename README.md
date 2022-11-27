@@ -17,12 +17,12 @@ WinPmem is a physical memory acquisition tool with the following features:
 
 - Open source
 
-- Support for WinXP - Win 10, x86 + x64. The WDK7600 can be used to
+- Support for Win7 - Win 10, x86 + x64. The WDK7600 might be used to
   include WinXP support.
   As default, the provided WinPmem executables will be compiled with WDK10,
   supporting Win7 - Win10, and featuring more modern code.
 
-- Three different independent methods to create a memory dump.
+- Three independent reading methods, with two methods to create a complete memory dump.
   One method should always work even when faced with kernel mode rootkits.
 
 - Raw memory dump image support.
