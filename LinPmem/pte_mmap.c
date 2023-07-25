@@ -29,7 +29,7 @@
 
 /* __attribute__ ((noinline)) */ void print_pte_contents(volatile PPTE ppte);
 
-/* __attribute__ ((noinline)) */ PTE_STATUS virt_find_pte(VIRT_ADDR vaddr, volatile PPTE * pPTE);
+/* __attribute__ ((noinline)) */ PTE_STATUS virt_find_pte(VIRT_ADDR vaddr, volatile PPTE * pPTE, uint64_t foreign_CR3);
 
 /* __attribute__ ((noinline)) */ _Bool setupRoguePageAndBackup(PPTE_METHOD_DATA pPtedata);
 
@@ -85,9 +85,11 @@ PTE_STATUS pte_remap_rogue_page(PPTE_METHOD_DATA pPtedata, uint64_t Phys_addr)
         return PTE_ERROR;
     }
 
-    #if PRINT_PTE_REMAP_ACTIONS == 1
+    #ifdef PRINT_PTE_REMAP_ACTIONS
     // Careful, this can be preeetty noisy if reading the whole RAM.
-    printk("Remapping va %llx to %llx\n", pPtedata->page_aligned_rogue_ptr.pointer, Phys_addr);
+    printk("Remapping va %llx to %llx\n",
+            (long long unsigned int) pPtedata->page_aligned_rogue_ptr.pointer,
+            Phys_addr);
     #endif
 
     // Change the pte to point to the new offset.
@@ -135,6 +137,7 @@ void print_pte_contents(volatile PPTE ppte)
 //  _In_ VIRT_ADDR vaddr: The virtual address to resolve the pte for.
 //  _Out_  PPTE * pPTE: A pointer to receive the PTE virtual address.
 //                      ... if found.
+//  _In_Optional   uint64_t foreign_CR3. Another CR3 (not yours) can be used instead. Hopefully you know that it's valid!
 //
 // Returns:
 //  PTE_SUCCESS or PTE_ERROR
@@ -143,7 +146,7 @@ void print_pte_contents(volatile PPTE ppte)
 //          Large pages are supported.
 //
 //
-PTE_STATUS virt_find_pte(VIRT_ADDR vaddr, volatile PPTE * pPTE)
+PTE_STATUS virt_find_pte(VIRT_ADDR vaddr, volatile PPTE * pPTE, uint64_t foreign_CR3)
 {
     CR3 cr3;
     PPML4E pml4;
@@ -165,8 +168,20 @@ PTE_STATUS virt_find_pte(VIRT_ADDR vaddr, volatile PPTE * pPTE)
     printk("Resolving PTE for Address: %llx.\nPrinting ambiguous names: WinDbg terminus(first)/normal terminus(second).\n", vaddr.value);
     #endif
 
-    // Get contents of cr3 register to get to the PML4
-    cr3 = readcr3();
+    // Get CR3 to get to the PML4
+    if (foreign_CR3 == 0)
+    {
+        cr3 = readcr3();
+    }
+    else if ((foreign_CR3 > 0x10000) && (foreign_CR3 < SANE_KERNEL_VA )) // this is just a very primitive numeric sanity check.
+    {
+        cr3.value = foreign_CR3; // take over the special CR3.
+    }
+    else // A visibly wrong and invalid foreign cr3 was specified.
+    {
+        printk("Error: a custom CR3 was specified for vtop, but it is clearly wrong and invalid. Caller: please check your code.\n");
+        goto error;
+    }
 
     #ifdef DPRINT
     #ifdef LEAK_CR3_DEBUG_INFO
@@ -334,7 +349,7 @@ _Bool setupRoguePageAndBackup(PPTE_METHOD_DATA pPtedata)
     // We only need one PTE for the rogue page, and just remap the PFN.
     // A part of the driver's body is sacrificed for this, this part is in a special section.
     // (However, during rest of the life time, this part of the driver must be considered "missing", basically to be treated as a black hole.)
-    pte_status = virt_find_pte(pPtedata->page_aligned_rogue_ptr, &pPtedata->rogue_pte);
+    pte_status = virt_find_pte(pPtedata->page_aligned_rogue_ptr, &pPtedata->rogue_pte, 0);
 
     if (pte_status != PTE_SUCCESS)
     {

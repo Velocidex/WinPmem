@@ -82,7 +82,8 @@ Warning: this is an early version.
     * pti: on
 * Fedora 38, Qemu/kvm, fully paravirtualized.
     * pti: on
-* Baremetal Linux: Linux 6.4.4, pti on.
+* Baremetal Linux test, AMI BIOS: Linux 6.4.4, pti on.
+* Baremetal Linux test, HP: Linux 6.4.4, pti on.
 
 
 ### Issues
@@ -99,11 +100,13 @@ Warning: this is an early version.
 
 * Control of the processor cache attribute for reading. For uncached reading of mapped I/O and DMA space.
 
+* Keeping proper status/error states would be good.
 
 ### Potential Incompabilities
 
 Not tested, but these may potentially cause problems:
 
+* Secure Boot (Ubuntu): the driver will not load without signing.
 * AMD SME
 * Intel TDX
 * Perhaps Pluton chips?

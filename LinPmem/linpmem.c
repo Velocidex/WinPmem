@@ -403,7 +403,7 @@ static long int IOCTL_Dispatch(struct file *file, unsigned ioctl, unsigned long 
                 goto IOCTL_Dispatch_end;
             }
 
-            pte_status = virt_find_pte(In_VA, &pPTE);
+            pte_status = virt_find_pte(In_VA, &pPTE, VTOP_Info.associatedCR3);
 
             if (pte_status != PTE_SUCCESS)
             {

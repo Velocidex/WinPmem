@@ -36,7 +36,9 @@
 // translate virtual addresses into physical addresses.
 // And since the CR3 is important, you can also query CR3.
 
-// Please zero out your structs before using this driver.
+
+
+// === Please zero out your structs before using this driver. ===
 
 
 
@@ -116,12 +118,13 @@ typedef struct _LINPMEM_DATA_TRANSFER
 typedef struct _LINPMEM_VTOP_INFO
 {
     uint64_t    virtAddress;    // (_IN_) The virtual address in question.
-    uint64_t    associatedCR3;  // (_IN_OPT_) Optional: specify a custom CR3 (of a foreign process) to be used in the translation service. Not implemented yet!
-    // In future you could specify the CR3 of a *foreign* process.
+    uint64_t    associatedCR3;  // (_IN_OPT_) Optional: specify a custom CR3 (of a foreign process) to be used in the translation service.
+    // Leave this to zero if you do not want a foreign CR3 to be used!
+    // You can specify a foreign CR3 that belongs to another (valid) process context.
     // E.g., you are Alice, and you want Bob's CR3 to be used, to read something from Bob's userspace.
     // As Alice, previously to using vtop, you would have done a CR3 query invocation,
     // so that you have Bob's CR3 by now. Also, Bob must still live, of course. :-D
-    // For now, this value is going to be ignored.
+    // Beware, this value is used if nonzero!
     uint64_t    physAddress;    // (_OUT_) returns the physical address you wanted.
     void *      PTEAddress;     // (_OUT_) returns the PTE virtual address, too.
 
