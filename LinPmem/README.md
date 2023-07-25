@@ -96,11 +96,11 @@ Warning: this is an early version.
 
 * Force ignore page boundary for reading. If you know it's contiguous memory, read across as many pages as you like.
 
-* Foreign CR3 reading. Specify a foreign process you want the CR3 from in the CR3 query IOCTL and it will be returned.
+* Easier foreign CR3 reading. Specify a foreign process you want the CR3 from in the CR3 query IOCTL and it will be returned.
 
 * Control of the processor cache attribute for reading. For uncached reading of mapped I/O and DMA space.
 
-* Keeping proper status/error states would be good.
+* More differentiated status/error states (driver status and request status).
 
 ### Potential Incompabilities
 
