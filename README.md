@@ -1,117 +1,113 @@
-# Linpmem
+# The WinPmem memory acquisition driver and userspace.
 
-Linpmem is a Linux x64-only tool for reading physical memory.
+![alt text](site/figures/128x128/winpmem_with_eye.png "WinPmem -- a physical memory acquisition tool")
 
-As with Winpmem, it is published under Apache 2.0 license.
-It is a bit different from the current Windows version.
+WinPmem has been the default open source memory acquisition driver for
+windows for a long time. It used to live in the Rekall project, but
+has recently been separated into its own repository.
 
-Similar to Winpmem, this is not so much a traditional memory dumper (but
-is totally capable of memory dumping).
-However, Linpmem can read from just *any* physical address, explicitly
-including *reserved memory* and *memory holes* and more generally, all
-physical addresses that have no virtual addresses associated (with no existing PTE).
+## Copyright
 
-Linpmem offers a variety of possible access modes to read physical memory,
-such as byte, word, dword, qword and buffer access mode (where buffer access mode is suggested in most standard cases).
-If reading requires an aligned byte/word/dword/qword read, Linpmem will precisely do that.
+This code was originally developed within Google but was released
+under the Apache License.
 
-The user must compile the Linpmem driver for its own kernel.
-(As much as we would like to provide precompiled driver binaries, this is not how Linux works.)
-The Linpmem user interface features:
+### Description
 
-1. CR3 read
-2. Read physical address (accessmode byte,word,dword,qword, or buffer).
-3. VTOP translation service.
+WinPmem is a physical memory acquisition tool with the following features:
 
-### Content
+- Open source
 
-* The root folder contains the drivers source code. Use `make` to compile it.
-* In 'demo', find `test.c` which demonstrates and explains the user interface of Linpmem.
+- Support for Win7 - Win 10, x86 + x64. The WDK7600 might be used to
+  include WinXP support.
+  As default, the provided WinPmem executables will be compiled with WDK10,
+  supporting Win7 - Win10, and featuring more modern code.
 
-### Compiling
+- Three independent reading methods, with two methods to create a complete memory dump.
+  One method should always work even when faced with kernel mode rootkits.
 
-There is no other way than to compile it yourself.
+- Raw memory dump image support.
 
-#### Short:
+- A read device interface is used instead of writing the image from the kernel
+  like some other imagers. This allows us to have complex userspace imager
+  (e.g. copy across network, hash etc), as well as run analysis on the live
+  system (e.g. can be run directly on the device).
 
-1. `make`
-2. `(sudo) insmod linpmem.ko`
-3. `(sudo) mknod /dev/linpmem c 64 0`
-4. `cd demo`
-5. `gcc -o test test.c`
-6. `sudo ./test`
-7. `optional: (sudo) rmmod linpmem.ko`
+The files in this directory (Including the WinPmem sources and signed binaries),
+are available under the following license: Apache License, Version 2.0
 
-Don't execute test without having read `test.c`!
+### How to use
 
-#### Driver compilation (detailed):
+There are two WinPmem executables: winpmem_mini_x86.exe and winpmem_mini_x64.exe.
+Both versions contain both drivers (32 and 64 bit versions).
 
-1. Download linux-headers (best from your repo)
-2. Make sure you have gcc, make, ..., and a decent text-viewer/source code editor/IDE.
-3. `precompiler.h`: check if everything is at your liking.
-4. `make`
-5. `sudo insmod linpmem.ko`, or root: `/usr/sbin/insmod pathTo-Linpmem.ko`
-6. `sudo dmesg`. Be sure to check for any error print. Please report if you see any!
-7. On success: `configured successfully` message. It's ready to use.
+The mini in the binary name refers to this imager being a plain simple
+imager - it can only produce images in RAW format. In the past we
+release a WinPmem imager based on AFF4 but that one is yet to be updated to the new driver. Please let us know if you need the AFF4 based imager.
 
-The insmod way is the currently recommended way to load Linpmem.
+### The Python acquisition tool winpmem.py
 
+The python program is currently under construction but works as a demonstration for how one can use the imager from Python.
 
-#### Usermode program (detailed)
+### winpmem_mini_x64.exe (standalone executable)
 
-1. Go to demo folder
-2. (Read `test.c` carefully, you cannot use Linpmem with zero knowledge.)
-3. Go to main(), un/comment the tests as you like.
-4. `gcc -o test test.c`, or your own program.
-5. `sudo mknod /dev/linpmem c 64 0` (in case you aren't familiar: you only need to create this 1x time.)
-6. `sudo ./test`, or your own program.
-7. Additionally, watch dmesg output. Please report errors if you see any!
+This program is easiest to use for incident response since it requires no other
+dependencies than the executable itself. The program will load the correct
+driver (32 bit or 64 bit) automatically and is self-contained.
 
-Warning: if there is a dmesg error print from Linpmem telling to reboot, better do it immediately.
+##### Examples:
 
-Warning: this is an early version.
+`winpmem_mini_x64.exe physmem.raw`
 
+Writes a raw image to physmem.raw using the default method of acquisition.
 
-### Tested
+`winpmem_mini_x64.exe`
 
-* Debian self-compiled, Qemu/kvm, not paravirtualized.
-    * pti: off
-* Debian 12: Qemu/kvm, fully paravirtualized.
-    * pti: on
-* Ubuntu server, Qemu/kvm, not paravirtualized.
-    * pti: on
-* Fedora 38, Qemu/kvm, fully paravirtualized.
-    * pti: on
-* Baremetal Linux test, AMI BIOS: Linux 6.4.4, pti on.
-* Baremetal Linux test, HP: Linux 6.4.4, pti on.
+Invokes the usage print / short manual.
 
+To acquire a raw image using specifically the MmMapIoSpace method:
 
-### Issues
+`winpmem.exe -1 myimage.raw`
 
-* Large page read: check current logic if it is really allowing to read all the large page.
-* Huge page read: not implemented. Linpmem recognizes a huge page and rejects the read, for now.
-* No idea how to control the processor caching attribute on Linux. Warning: reading from mapped io and DMA space will be done with caching enabled.
+The driver will be automatically unloaded after the image is acquired!
 
-### Future work
+Experimental write support
+--------------------------
 
-* Force ignore page boundary for reading. If you know it's contiguous memory, read across as many pages as you like.
+The WinPmem source code supports writing to memory as well as reading.
+This capability is a great learning tool since many rootkit hiding
+techniques can be emulated by writing to memory directly.
 
-* Easier foreign CR3 reading. Specify a foreign process you want the CR3 from in the CR3 query IOCTL and it will be returned.
+This functionality should be used with extreme caution!
 
-* Control of the processor cache attribute for reading. For uncached reading of mapped I/O and DMA space.
+NOTE: Since this is a rather dangerous capability, the signed binary
+drivers have write support disabled. You can rebuild the drivers to
+produce test signed binaries if you want to use this feature. The
+unsigned binaries (really self signed with a test certificate) can not
+load on a regular system due to them being test self signed, but you can
+allow the unsigned drivers to be loaded on a test system by issuing
+(see
+https://docs.microsoft.com/en-us/windows-hardware/drivers/install/the-testsigning-boot-configuration-option:
 
-* More differentiated status/error states (driver status and request status).
+`Bcdedit.exe -set TESTSIGNING ON`
 
-### Potential Incompabilities
+and reboot. You will see a small "Test Mode" text on the desktop to remind you
+that this machine is configured for test signed drivers.
 
-Not tested, but these may potentially cause problems:
+Additionally, Write support must also be enabled at load time:
 
-* Secure Boot (Ubuntu): the driver will not load without signing.
-* AMD SME
-* Intel TDX
-* Perhaps Pluton chips?
+`winpmem.exe -w -l`
 
-Although they are very rare to encounter.
-It needs to be enabled by the system owner, so you should know if you are using it.
+This will load the drivers and turn on write support.
 
-(Please report potential issues on this.)
+# Acknowledgments
+
+This project would also not be possible without support from the wider
+DFIR community:
+
+* We would like to thank Emre Tinaztepe and Mehmet GÖKSU at
+[Binalyze](https://binalyze.com/).
+
+Our open source contributors:
+
+* Viviane Zwanger
+* Mike Cohen
