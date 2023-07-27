@@ -84,7 +84,7 @@ Warning: this is an early version.
     * pti: on
 * Baremetal Linux test, AMI BIOS: Linux 6.4.4, pti on.
 * Baremetal Linux test, HP: Linux 6.4.4, pti on.
-
+* Baremetal Ubuntu 20.04 with Secure Boot on. Works, but [sign](#secure-boot) driver first.
 
 ### Issues
 
@@ -106,7 +106,7 @@ Warning: this is an early version.
 
 Not tested, but these may potentially cause problems:
 
-* Secure Boot (Ubuntu): the driver will not load without signing.
+* Secure Boot (Ubuntu): please [sign](#secure-boot) your driver prior to using.
 * AMD SME
 * Intel TDX
 * Perhaps Pluton chips?
@@ -115,3 +115,47 @@ Although they are very rare to encounter.
 It needs to be enabled by the system owner, so you should know if you are using it.
 
 (Please report potential issues on this.)
+
+### Secure Boot
+
+If the system reports the following error message when loading the module, it might be because of secure boot:
+
+```
+$ sudo insmod linpmem.ko
+insmod: ERROR: could not insert module linpmem.ko: Operation not permitted
+```
+
+There are different ways to still load the module. The obvious one is to disable secure boot in your UEFI settings.
+
+If your distribution supports it, a more elegant solution would be to sign the module before using it.
+This can be done using the following steps (tested on Ubuntu 20.04).
+
+1. Install mokutil:
+   ```
+   $ sudo apt install mokutil
+   ```
+2. Create the singing key material:
+   ```
+   $ openssl req -new -newkey rsa:4096 -keyout mok-signing.key -out mok-signing.crt -outform DER -days 365 -nodes -subj "/CN=Some descriptive name/"
+   ```
+   Make sure to adjust the options to your needs. Especially, consider the key length (-newkey), the validity (-days), the option to set a key pass phrase (-nodes; leave it out, if you want to set a pass phrase) and the common name to include into the certificate (-subj).
+
+3. Register the new MOK:
+   ```
+   $ sudo mokutil --import mok-signing.crt
+   ```
+   You will be asked for a password, which is required in the following step. Consider using a password, which you can type on a US keyboard layout.
+
+4. Reboot the system.
+  It will enter a MOK enrollment menu. Follow the instructions to enroll your new key.
+
+5. Sign the module
+   Once the MOK is enrolled, you can sign your module.
+   ```
+   $ /usr/src/linux-headers-$(uname -r)/scripts/sign-file sha256 path/to/mok-singing/MOK.key path/to//MOK.cert path/to/linpmem.ko
+   ```
+   After that you should be able to load the module.
+
+Note that from a forensic readiness perspective, you should prepare a signed module ***before*** you need it, as the system will reboot twice during the process described above, probably destroying most of your volatile data in memory.
+
+
