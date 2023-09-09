@@ -1,13 +1,13 @@
 ### 27. Nov 2022, 3.0.3 *alpha*
 
-Now new bugs or issues detected, only small improvements, testing (and knowledge increase).
+No bugs detected anymore, only small improvements, testing (and knowledge increase). 
+Tried to resolve an issue with not being able to read certain pages inside the normal physical ranges, KD fails at these, too. It's not a Winpmem error.
 
 * **Important note**: the iospace method cannot be used as general purpose physical reading method. (For details, please refer to my comments in read.c.) In particular, it should urgently be thrown out of the mini tool. (Applicable also for the 2.0.1 version in the master branch.) It can cause hazard to use it in this purpose.
-* 3.0.3: the iospace method has been removed from the usermode mini tool, because it is not applicable for the creation of complete memory dumps. It is kept as a method because of other useful use cases, just not complete memory dumps.
-* Added another testing variant source code file.
-* DbgPrint: in the three read methods, it does not make sense to print the VA of the source buffer. This is not the target VA, the target VA is unknown.
-* This is exactly the problem: the PFN is all that is known, and that's not exactly much. On read error, getting ACCESS_DENIED doesn't tell anything about the true reason. The reason would be an important clue. If known, maybe some more pages could be made read.
-* Ongoing research on read errors: catched 'resisting' nt!ZwMapViewOfSection nonzero mappedbuffers in flagranti, with PTE indicating that it's totally valid, while unreadable. (I could not have used the PTE method for this, no VA...) I have always been zeroing out the mapped buffer variable faithfully before calling nt!ZwMapViewOfSection, so the unreadable returned VA addresses are really originating from nt!ZwMapViewOfSection, and as said, the PTE says the page is valid. But not even KD is able to read from that. There ought to be a reason why nt!ZwMapViewOfSection is returning a seemingly valid address with sane looking PTE.
+* 3.0.3: the iospace method has been removed from the usermode mini tool, because it is not applicable for the creation of complete memory dumps.
+* Added another test example code.
+* DbgPrint minor updates.
+* Reading some pages fail when reading for example a complete memory dump (while staying within the normal physical ranges, not talking about reserved memory). The PFN is all that is known and STATUS_ACCESS_DENIED is returned when trying to read. How odd. Catched one of these 'resisting' nt!ZwMapViewOfSection nonzero mapped buffers in flagranti, with PTE indicating that it's totally valid, while unreadable. Not even KD is able to read from that (example below). There ought to be a reason, which currently escapes me, why nt!ZwMapViewOfSection is returning a seemingly valid address with sane looking PTE. It happens on almost all machines. It is not bound to any particular machine or OS. It's normal memory, and not reserved memory. In the exaple below, it's a usermode (read-only, present/valid) page. I must be overlooking something. It's not a fault of Winpmem, as KD fails equally. Current best bet is that *credential guard* was enabled on these machines (I tend to do that).
 
 ```
 0: kd> !pte 248`9ac2b000
@@ -17,20 +17,18 @@ contains 0A000000047A8867  contains 0A00000004AA9867  contains 0A000000456B1867 
 pfn 47a8      ---DA--UWEV  pfn 4aa9      ---DA--UWEV  pfn 456b1     ---DA--UWEV  pfn c3cb      ----A--UR-V
 ```
 
-Looks valid? Yes. Readable? **No**.
+Valid/present? Yes. Readable? **No**.
 
 ```
 0: kd> !db c3cb000
 Physical memory read at c3cb000 failed
-
-0: kd> db 000002489ac2b000
-00000248`9ac2b000  ?? ?? ?? ?? ?? ?? ?? ??-?? ?? ?? ?? ?? ?? ?? ??  ????????????????
 ```
+If it was reserved memory it would be understandable, but against normal usermoge pages? Odd.
 
 
 ### 26. Nov 2022, 3.0.2 *Alpha*
 
-* The testing program: GENERIC_RED/GENERIC_WRITE => FILE_GENERIC_READ/FILE_GENERIC_WRITE. Otherwise won't work on Win11.
+* Small update in example test code: GENERIC_RED/GENERIC_WRITE => FILE_GENERIC_READ/FILE_GENERIC_WRITE. Otherwise won't work on Win11.
 * Error DbgPrint output:
     * When handling an exception, always get the NTSTATUS code from the exception for a precise error printout.
     * When handling an exception, use the original exception NTSTATUS code, do not return an own custom NTSTATUS, unless it is a routine answering back to a userspace program.
@@ -42,15 +40,6 @@ Physical memory read at c3cb000 failed
 * Bugfix (important): if there is an issue on return of ZwMapViewOfSection, do not try to unmapview the empty pointer.
     * Also check pointer before calling ZwUnmapViewOfSection or MmUnmapIoSpace, even if it seems uneeded.
 * Bugfix (important): really check if a reading mode has been set before calling a reading method.
-
-#### Intermediate status report:
-1. Ethics: using Winpmem for an evil intent will become harder.
-2. Correctness: starting with version 3.0.1, the correctness can be proven and tested for all three methods (by using the reverse search ability).
-3. Powerfulness: literally unlimited without core isolation. Be careful when reading from non-RAM space. With core isolation on, no reading from non-readable pages. This includes the PTE remapping method.
-4. Compliance: much better than in 2.0.1. Should test a bit how to handle the warnings 30029 and 30030 (Win7 is the bottleneck); going against might hurt point 6 in the long term (point 6 is important).
-5. Health/safety: major increase since 2.0.1.
-6. Longevity: did my best to support this front, but it is hard to see into the future. I will check again before any signing takes place (this might never happen).
-
 
 ### 20. Nov 2022
 
