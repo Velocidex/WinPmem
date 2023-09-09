@@ -2,9 +2,11 @@
 
 ![alt text](site/figures/128x128/winpmem_with_eye.png "WinPmem -- a physical memory acquisition tool")
 
-WinPmem has been the default open source memory acquisition driver for
+**WinPmem** has been the default open source memory acquisition driver for
 windows for a long time. It used to live in the Rekall project, but
 has recently been separated into its own repository.
+
+This is the *Windows* version. The *Linux* version, **Linpmem**, is at: [https://github.com/Velocidex/Linpmem](https://github.com/Velocidex/Linpmem)
 
 ## Copyright
 
@@ -100,6 +102,8 @@ Additionally, Write support must also be enabled at load time:
 This will load the drivers and turn on write support.
 
 # Acknowledgments
+
+Winpmem, as well as Linpmem, would not exist without the work of our predecessors of the (now retired) REKALL project: https://github.com/google/rekall.
 
 This project would also not be possible without support from the wider
 DFIR community:
