@@ -36,50 +36,43 @@ void help(TCHAR* ExeName)
         L"        Extract driver to this file (Default use random name).\n"
         L"  -h    Display this help.\n"
         L"  -w    Turn on write mode.\n"
-        L"  -0    Use MmMapIoSpace method.\n"
         L"  -1    Use \\\\Device\\PhysicalMemory method (Default for 32bit OS).\n"
         L"  -2    Use PTE remapping (AMD64 only - Default for 64bit OS).\n"
-        // L"  -3    Use PTE remapping with PCI instrospection (AMD64 Only).\n"
-        // L"  -e    Produce an ELF core dump.\n"
-        // L"  -p    Also acquire the pagefile. \n"
-        // L"        This flag may be followed by the pagefile path.\n"
         L"\n");
 
     Log(L"NOTE: an output filename of - will write the image to STDOUT.\n");
     Log(L"\nExamples:\n");
     Log(L"%s physmem.raw\nWrites an image to physmem.raw\n", ExeName);
-    // Log(L"\n%s -e - | nc 192.168.1.1 80\n", ExeName);
-    // Log(L"Writes an elf coredump to netcat for network transport.\n");
 }
 
 /* Create the corrent WinPmem object. Currently this selects between
    32/64 bit implementations.
 */
-WinPmem* WinPmemFactory() 
+WinPmem* WinPmemFactory()
 {
     SYSTEM_INFO sys_info;
-	
+
     ZeroMemory(&sys_info, sizeof(sys_info));
 
     GetNativeSystemInfo(&sys_info);
-	
-    switch (sys_info.wProcessorArchitecture) 
-	{
-		case PROCESSOR_ARCHITECTURE_AMD64:
-			Log(L"WinPmem64\n");
-			return new WinPmem64();
 
-		case PROCESSOR_ARCHITECTURE_INTEL:
-			Log(L"WinPmem32\n");
-			return new WinPmem32();
+    switch (sys_info.wProcessorArchitecture)
+    {
+        case PROCESSOR_ARCHITECTURE_AMD64:
+            Log(L"WinPmem64\n");
+            return new WinPmem64();
 
-		default:
-			return NULL;
+        case PROCESSOR_ARCHITECTURE_INTEL:
+            Log(L"WinPmem32\n");
+            return new WinPmem32();
+
+        default:
+            return NULL;
     }
 }
 
 
-int _tmain(int argc, _TCHAR* argv[]) 
+int _tmain(int argc, _TCHAR* argv[])
 {
     __int64 i, status;
     unsigned __int32 mode = PMEM_MODE_PTE;
@@ -90,63 +83,58 @@ int _tmain(int argc, _TCHAR* argv[])
     WinPmem* pmem_handle = WinPmemFactory();
     TCHAR* driver_filename = NULL;
 
-    if (argc < 2) 
-	{
+    if (argc < 2)
+    {
         goto error;
     }
 
-    for (i = 1; i < argc; i++) 
-	{
-        if (argv[i][0] == '-' && argv[i][1] != 0) 
-		{
-            switch (argv[i][1]) 
-			{
-				
-				case 'l': 
-				{
-					only_load_driver = 1;
-					break;
-				}
-				case 'u': 
-				{
-					only_unload_driver = 1;
-					break;
-				}
-				
-				case 'd': 
-				{
-					i++;
-					driver_filename = argv[i];
-					if (!driver_filename) goto error;
-				} 
-				break;
+    for (i = 1; i < argc; i++)
+    {
+        if (argv[i][0] == '-' && argv[i][1] != 0)
+        {
+            switch (argv[i][1])
+            {
 
-				case '0': 
-				{
-					mode = PMEM_MODE_IOSPACE;
-					break;
-				}
-				case '1': 
-				{
-					mode = PMEM_MODE_PHYSICAL;
-					break;
-				}
-				case '2': 
-				{
-					mode = PMEM_MODE_PTE;
-					break;
-				}
-				case 'w': 
-				{
-					Log(TEXT("Enabling write mode.\n"));
-					write_mode = 1;
-					break;
-				}
+                case 'l':
+                {
+                    only_load_driver = 1;
+                    break;
+                }
+                case 'u':
+                {
+                    only_unload_driver = 1;
+                    break;
+                }
 
-				default:
-				{
-					goto error;
-				}
+                case 'd':
+                {
+                    i++;
+                    driver_filename = argv[i];
+                    if (!driver_filename) goto error;
+                }
+                break;
+                
+                case '1':
+                {
+                    mode = PMEM_MODE_PHYSICAL;
+                    break;
+                }
+                case '2':
+                {
+                    mode = PMEM_MODE_PTE;
+                    break;
+                }
+                case 'w':
+                {
+                    Log(TEXT("Enabling write mode.\n"));
+                    write_mode = 1;
+                    break;
+                }
+
+                default:
+                {
+                    goto error;
+                }
 
             }  // Switch.
 
@@ -155,48 +143,49 @@ int _tmain(int argc, _TCHAR* argv[])
     }
 
     // Now run what the user wanted.
-    if (driver_filename) 
-	{
+    if (driver_filename)
+    {
         pmem_handle->set_driver_filename(driver_filename);
     }
 
-    if (only_load_driver) 
-	{
+    if (only_load_driver)
+    {
         status = pmem_handle->install_driver();
-		
-        if (status > 0) 
-		{
+
+        if (status > 0)
+        {
             pmem_handle->set_acquisition_mode(mode);
 
-            if (write_mode) 
-			{
+            if (write_mode)
+            {
                 pmem_handle->set_write_enabled();
             }
         }
 
     }
-    else if (only_unload_driver) 
-	{
+    else if (only_unload_driver)
+    {
         status = pmem_handle->uninstall_driver();
 
     }
-    else if (argv[i]) 
-	{
+    else if (argv[i])
+    {
         pmem_handle->set_driver_filename(driver_filename);
 
         status = pmem_handle->create_output_file(argv[i]);
 
-        if ((status) && (pmem_handle->install_driver() > 0) && (pmem_handle->set_acquisition_mode(mode) > 0)) 
-		{
-			status = pmem_handle->write_raw_image();
+        if ((status) && (pmem_handle->install_driver() > 0) && (pmem_handle->set_acquisition_mode(mode) > 0))
+        {
+            status = pmem_handle->write_raw_image();
         }
+        else status = -1;
 
         pmem_handle->uninstall_driver();
 
         // Just extract the driver and exit.
     }
-    else if (driver_filename) 
-	{
+    else if (driver_filename)
+    {
         status = pmem_handle->extract_driver(driver_filename);
     }
     else goto error;
@@ -207,11 +196,11 @@ int _tmain(int argc, _TCHAR* argv[])
 
 error:
     if (pmem_handle)
-	{
+    {
         delete pmem_handle;
     }
-	
+
     help(argv[0]);
-	
+
     return -1;
 }

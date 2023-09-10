@@ -1,0 +1,7 @@
+1. msbuild /p:configuration=Release/Debug /p:platform=x64 testapp.vcxproj
+
+2. Install 64 bit Winpmem driver binary yourself.
+
+3. run testapp.exe
+
+4. (uninstall Winpmem driver binary)

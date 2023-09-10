@@ -15,7 +15,6 @@
   limitations under the License.
 */
 
-
 #include "winpmem.h"
 #include <time.h>
 
@@ -109,14 +108,17 @@ __int64 WinPmem::copy_memory_small(unsigned __int64 start, unsigned __int64 end)
         result = ReadFile(fd_, largebuffer, to_write, &bytes_read, NULL);
 
         // Page read failed - pad with nulls and keep going.
-        if ((!(result)) || (bytes_read != to_write)) {
+        if ((!(result)) || (bytes_read != to_write))
+        {
             result = WriteFile(out_fd_, nullbuffer, buff_size, &bytes_written, NULL);
         }
-        else {
+        else
+        {
             result = WriteFile(out_fd_, largebuffer, bytes_read, &bytes_written, NULL);
         }
 
-        if (!result) {
+        if (!result)
+        {
             LogLastError(TEXT("Failed to write image file"));
             goto error;
         }
@@ -184,15 +186,22 @@ __int64 WinPmem::copy_memory(unsigned __int64 start, unsigned __int64 end) {
                 // read
                 result = ReadFile(fd_, largebuffer, to_write, &bytes_read, NULL);
 
-                if (!result || bytes_read != to_write) {
+                if (!result || (bytes_read != to_write)) // reading from winpmem (using large reads) failed in first instance.
+                {
                     // Indicates this 16mb buffer was read slowly.
                     indicator = TEXT("x");
                     result = copy_memory_small( start, start + to_write);
-                } else {
+                    // the second no-fail slow but sturdy approach, reads in tiny portions.
+                    // Any stubborn unreadable pages will be padded with zeros.
+                    // Does the writes on its own.
+                }
+                else // reading from winpmem (using large reads) went fine at first try.
+                {
                     result = WriteFile(out_fd_, largebuffer, bytes_read, &bytes_written, NULL);
                 }
 
-                if (!result) {
+                if (!result)
+                {
                   LogLastError(TEXT("Failed to write image file"));
                   goto error;
                 }
@@ -297,9 +306,9 @@ __int64 WinPmem::set_acquisition_mode(unsigned __int32 mode)
         BOOL result = FALSE;
 
         // let's do some sanity checking first.
-        if (! ((mode == PMEM_MODE_IOSPACE) || (mode == PMEM_MODE_PHYSICAL) || (mode == PMEM_MODE_PTE)) )
+        if (! ((mode == PMEM_MODE_PHYSICAL) || (mode == PMEM_MODE_PTE)) )
         {
-                Log(TEXT("This mode does not exist!"));
+                Log(TEXT("This mode is not available!"));
                 return -1;
         }
 
@@ -428,7 +437,7 @@ __int64 WinPmem::write_raw_image()
 
         __int64 current = 0;
 
-        for(i=0; i < info.NumberOfRuns.QuadPart; i++)
+        for (i=0; i < info.NumberOfRuns.QuadPart; i++)
         {
                 if(info.Run[i].BaseAddress.QuadPart > current)
                 {
@@ -439,13 +448,22 @@ __int64 WinPmem::write_raw_image()
                   {
                         printf("padding went terribly wrong! Cancelling & terminating. \n");
                         fflush(stdout);
+                        status = -1;
                         goto exit;
                   }
                 }
 
                 // write next RAM memory region to file.
 
-                copy_memory(info.Run[i].BaseAddress.QuadPart, info.Run[i].BaseAddress.QuadPart + info.Run[i].NumberOfBytes.QuadPart);
+                result = copy_memory(info.Run[i].BaseAddress.QuadPart, info.Run[i].BaseAddress.QuadPart + info.Run[i].NumberOfBytes.QuadPart);
+
+                if (!result)
+                {
+                    printf("Copying memory at run 0x%08llX went wrong! Perhaps check if there is enough space to write? Cancelling & terminating.\n", info.Run[i].BaseAddress.QuadPart);
+                    fflush(stdout);
+                    status = -1;
+                    goto exit;
+                }
 
                 // update current cursor offset.
 
