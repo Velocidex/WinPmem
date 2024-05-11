@@ -1,4 +1,4 @@
-# The WinPmem memory acquisition driver and userspace.
+# WinPmem -- a physical memory acquisition tool
 
 ![alt text](site/figures/128x128/winpmem_with_eye.png "WinPmem -- a physical memory acquisition tool")
 
@@ -71,6 +71,10 @@ To acquire a raw image using specifically the MmMapIoSpace method:
 `winpmem.exe -1 myimage.raw`
 
 The driver will be automatically unloaded after the image is acquired!
+
+### Limitations
+
+Due to how Microsoft designed the MJ READ function, reading from physical memory will fail in Winpmem with STATUS_INVALID_PARAMETER if a physical address *larger* than half the maximum value of an UINT64 is specified. E.g., this is true if somebody wants to read in higher parts of the physical memory **and** has a giant physical memory (more than 9,223,372,036,854,775,807). This sounds highly unlikely, but todays RAM sizes continue to increase.
 
 Experimental write support
 --------------------------
