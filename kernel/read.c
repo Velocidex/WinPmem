@@ -273,6 +273,17 @@ NTSTATUS DeviceRead(_In_ PDEVICE_EXTENSION extension,
     if (extension->mode == PMEM_MODE_PTE)  // The PTE method is not thread-safe.
     {
         ExAcquireFastMutex(&extension->mu); // Don't forget to always free the Mutex!
+
+        // For PTE remap method, it might happen that at any point in time, 
+        // we are thrown off from the current CPU core, and later we continue 
+        // on another CPU core that has another private CPU cache.
+        // This does not seem to happen often, but it may happen. The read would return wrong data.
+        // What needs to be done is to nail the current process/thread to one specific CPU core (and its cache). 
+        // To keep the code simple, we choose the first core (there is always one at least) and 
+        // we don't revert, because this would do no favor in this special case.
+        // In context of Winpmem, the caller probably will call multiple times. 
+        KeSetSystemAffinityThreadEx(1);   // the formula is (1 << i), where i starts at 0, and maximum is i=n-1.
+        // In short: we make the caller stay on this processor core (and its cache) and expect further incoming calls.
     }
     #endif
 
