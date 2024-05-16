@@ -1,3 +1,9 @@
+### 11. May 2024
+
+* Nail the current process/thread to one specific CPU core (the first core), if the chosen method is PTE remapping. The issue was that if the CPU scheduler throws the process/thread from the core n, and later resumes execution on core m, with a different CPU cache, the PTE remapping method can return wrong read data.
+* This is needed only for the PTE remapping method, not for the Microsoft-implemented method using the physical memory device. It is assumed that Microsoft implemented everything correctly and thus needs no such attention(?).
+* Corrected the old typo in the title and added a limitation section. Reading **physical** memory larger than 7fffffffffffffff will fail due to the current OS design of Microsoft,which restricts the I/O read request to not specify anything larger than a (positive) int64 value.
+
 ### 27. Nov 2022, 3.0.3 *alpha*
 
 No bugs detected anymore, only small improvements, testing (and knowledge increase). 
