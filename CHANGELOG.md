@@ -2,7 +2,7 @@
 
 * Updated vcxproj file.
   * Target OS still set to default Windows7, you will need WDK10 for this. This allows to support all OS with the same driver (except WinXP).
-  * Change the target OS line in the vcxproj to Windows10, if you cannot support this OS due to having a too new WDK (WDK11). The commended line is already there for convenience.
+  * Change the target OS line in the vcxproj to Windows10, if you cannot support this OS due to having a too new WDK (WDK11). The commented line is already there for convenience.
 * Renamed 'kernel' folder (the name was a leftover from rekall) to 'src'.
 
 * Removed driver support for eventlog writing and took out the message precompilation statements in vcxproj. Code was moved temporarily into 'NotInUse' folder if we change our mind.
