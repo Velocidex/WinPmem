@@ -20,9 +20,6 @@
 #include "pte_mmap.c"
 #include "read.c"
 #include "kd.c"
-#if EVENTLOG_WRITING == 1
-#include "log.c"
-#endif
 
 _IRQL_requires_max_(PASSIVE_LEVEL)
 DRIVER_UNLOAD IoUnload;
@@ -601,16 +598,6 @@ NTSTATUS DriverEntry (IN PDRIVER_OBJECT DriverObject,
     #endif
 
     ExInitializeFastMutex(&extension->mu);
-
-    #if EVENTLOG_WRITING == 1
-    if (setupEventLogging(RegistryPath) == STATUS_SUCCESS)
-    {
-        writeToEventLog(DriverObject, 0, 0, STATUS_SUCCESS, WINPMEM_ANNOUNCES_ITS_PRESENCE,
-                        0, NULL,
-                        0, NULL
-                        );
-    }
-    #endif
 
     WinDbgPrint("Driver initialization completed.\n");
     return ntstatus;

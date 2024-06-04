@@ -1,0 +1,108 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="12.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  
+<ItemGroup Label="ProjectConfigurations">
+
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+
+  </ItemGroup>
+
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{8BAC86C0-A3EA-4652-92BF-C51C0DF5D86C}</ProjectGuid>
+    <TemplateGuid>{8c0e3d8b-df43-455b-815a-4a0e72973bc6}</TemplateGuid>
+    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
+    <MinimumVisualStudioVersion>12.0</MinimumVisualStudioVersion>
+    <Platform Condition="'$(Platform)' == ''">x64</Platform>
+    <Configuration Condition="'$(Configuration)' == ''">Debug</Configuration>
+    <RootNamespace>winpmem</RootNamespace>
+
+    <PlatformToolset>WindowsKernelModeDriver10.0</PlatformToolset>
+    <ConfigurationType>Driver</ConfigurationType>
+    <DriverType>KMDF</DriverType>
+    <DriverTargetPlatform>Desktop</DriverTargetPlatform>
+    <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
+
+    <TargetVersion>Windows7</TargetVersion>  <!-- Requires WDK10 and not WDK11. -->
+    <!-- <TargetVersion>Windows10</TargetVersion>  -->
+    <!-- Wdk11 can only compile for minimum OS Win10, this covers only Win10-Win11. -->
+    <!-- If you want Windows 7 support, too, you need the WDK10. -->
+    
+  </PropertyGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+
+  <PropertyGroup Label="Configuration" Condition="'$(Configuration)'=='Release'">
+    <UseDebugLibraries>False</UseDebugLibraries>
+  </PropertyGroup>
+  
+  <PropertyGroup Label="Configuration" Condition="'$(Configuration)'=='Debug'">
+    <UseDebugLibraries>True</UseDebugLibraries>
+  </PropertyGroup>
+
+  <ItemDefinitionGroup>
+    <ClCompile>
+        <WppEnabled>true</WppEnabled>
+        <WppRecorderEnabled>true</WppRecorderEnabled>
+        <WppKernelMode>true</WppKernelMode>
+        <EnablePREfast>true</EnablePREfast>
+        <TreatWarningAsError>false</TreatWarningAsError>
+        <WarningLevel>Level4</WarningLevel>
+        <IntrinsicFunctions>true</IntrinsicFunctions>
+        <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+        <LanguageStandard>stdcpp14</LanguageStandard>
+    </ClCompile>
+    <Link>
+      <AdditionalDependencies>%(AdditionalDependencies);ntstrsafe.lib;wdmsec.lib</AdditionalDependencies>
+      <LargeAddressAware>true</LargeAddressAware>
+      <EntryPointSymbol>DriverEntry</EntryPointSymbol>
+      <RandomizedBaseAddress>true</RandomizedBaseAddress>
+      <DataExecutionPrevention>true</DataExecutionPrevention>
+    </Link>
+    <DriverSign>
+      <FileDigestAlgorithm>sha256</FileDigestAlgorithm>
+    </DriverSign>
+  </ItemDefinitionGroup>
+
+  <ItemGroup>
+    <FilesToPackage Include="$(TargetPath)" />
+  </ItemGroup>
+
+  <ItemGroup>
+        <ClCompile Include="winpmem.c" />
+  </ItemGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+
+    <Target Name="DisplayMessages" AfterTargets="Build">
+        <Message Text="Project Name = $(MSBuildProjectName)" />
+        <Message Text="Project File Name = $(MSBuildProjectFile)" />
+        <Message Text="ConfigurationType = $(ConfigurationType)" />
+        <Message Text="Configuration = $(Configuration)" />
+        <Message Text="Platform = $(Platform)" />
+        <Message Text="IntDir = $(IntDir)" />
+        <Message Text="OutDir = $(OutDir)" />
+        <Message Text="TargetPath = $(TargetPath)" />
+    </Target>
+</Project>

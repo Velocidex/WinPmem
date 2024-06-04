@@ -1,3 +1,14 @@
+### 18. May 2024
+
+* Updated vcxproj file.
+  * Target OS still set to default Windows7, you will need WDK10 for this. This allows to support all OS with the same driver (except WinXP).
+  * Change the target OS line in the vcxproj to Windows10, if you cannot support this OS due to having a too new WDK (WDK11). The commented line is already there for convenience.
+* Renamed 'kernel' folder (the name was a leftover from rekall) to 'src'.
+
+* Removed driver support for eventlog writing and took out the message precompilation statements in vcxproj. Code was moved temporarily into 'NotInUse' folder if we change our mind.
+
+Needed: there are no build instruction in readme and Winpmem usage is a bit outdated.
+
 ### 11. May 2024
 
 * Nail the current process/thread to one specific CPU core (the first core), if the chosen method is PTE remapping. The issue was that if the CPU scheduler throws the process/thread from the core n, and later resumes execution on core m, with a different CPU cache, the PTE remapping method can return wrong read data.

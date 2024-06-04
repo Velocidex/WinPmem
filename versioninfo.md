@@ -1,3 +1,7 @@
+### 3.0.1 stable version
+
+
+
 ### 3.0.x *alpha version*
 
 Compile latest source code (3.0.x *alpha* version) in two steps:
