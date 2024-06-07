@@ -7,7 +7,7 @@
 #define PMEM_DRIVER_VERSION "3.0.3"
 #define PMEM_DEVICE_NAME_ASCII "pmem"  // the name for normal userspace usage.
 #define PMEM_DEVICE_NAME L"pmem"       // preferred by the driver.
-#define PMEM_SERVICE_NAME TEXT("pmem") // and this is finally the service name.
+#define PMEM_SERVICE_NAME TEXT("winpmem") // and this is finally the service/display name.
 
 #ifndef PAGE_SIZE
 #define PAGE_SIZE 0x1000
