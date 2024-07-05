@@ -73,7 +73,12 @@ func doRun() error {
 		}
 	}
 
-	fd.Write([]byte(winpmem.Winpmem_x64))
+	driver_code, err := winpmem.Winpmem_x64()
+	if err != nil {
+		return err
+	}
+
+	fd.Write([]byte(driver_code))
 	fd.Close()
 
 	logger.Info("Writing driver to %v", *driver_path)
