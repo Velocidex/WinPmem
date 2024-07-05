@@ -5,8 +5,8 @@ import (
 	"io/ioutil"
 	"os"
 
-	winpmem "github.com/Velocidex/WinPmem"
 	"github.com/alecthomas/kingpin"
+	winpmem "github.com/scudette/go-winpmem"
 )
 
 var (
