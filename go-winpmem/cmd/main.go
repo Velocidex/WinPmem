@@ -6,7 +6,7 @@ import (
 	"os"
 
 	"github.com/alecthomas/kingpin"
-	winpmem "github.com/scudette/go-winpmem"
+	winpmem "github.com/scudette/WinPmem/go-winpmem"
 )
 
 var (
