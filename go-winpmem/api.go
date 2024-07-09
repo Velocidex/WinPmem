@@ -38,6 +38,12 @@ const (
 	PMEM_MODE_PTE      = PmemMode(2)
 )
 
+type Run struct {
+	Address int64
+	Size    int64
+	Sparse  bool
+}
+
 type PHYSICAL_MEMORY_RANGE struct {
 	BaseAddress   Uint64Hex `yaml:"BaseAddress"`
 	NumberOfBytes Uint64Hex `yaml:"NumberOfBytes"`

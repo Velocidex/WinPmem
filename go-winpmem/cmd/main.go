@@ -4,6 +4,7 @@ import (
 	_ "embed"
 	"io/ioutil"
 	"os"
+	"time"
 
 	"github.com/alecthomas/kingpin"
 	winpmem "github.com/scudette/WinPmem/go-winpmem"
@@ -88,6 +89,18 @@ func doRun() error {
 	defer winpmem.UninstallDriver(
 		*driver_path, *service_name, logger)
 
+	imager, err := winpmem.NewImager(`\\.\pmem`, logger)
+	if err != nil {
+		return err
+	}
+	defer imager.Close()
+
+	// We only support this mode now - it is the most reliable.
+	imager.SetMode(winpmem.PMEM_MODE_PTE)
+
+	logger.Info("Memory Info:\n")
+	logger.Info(imager.Stats().ToYaml())
+
 	// We do not need to take the image - we are done.
 	if *filename == "" {
 		return nil
@@ -103,17 +116,10 @@ func doRun() error {
 	}
 	defer out_fd.Close()
 
-	imager, err := winpmem.NewImager(`\\.\pmem`, logger)
-	if err != nil {
-		return err
-	}
-	defer imager.Close()
-
-	// We only support this mode now - it is the most reliable.
-	imager.SetMode(winpmem.PMEM_MODE_PTE)
-
-	logger.Info("Memory Info:\n")
-	logger.Info(imager.Stats().ToYaml())
+	start := time.Now()
+	defer func() {
+		logger.Info("Completed imaging in %v", time.Now().Sub(start))
+	}()
 
 	return imager.WriteTo(out_fd)
 }

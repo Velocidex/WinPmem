@@ -5,17 +5,126 @@ import (
 	"encoding/binary"
 	"io"
 	"os"
+	"sync"
 	"syscall"
 
 	"golang.org/x/sys/windows"
 )
 
 type Imager struct {
+	mu sync.Mutex
+
 	fd windows.Handle
 
-	stats *WinpmemInfo
+	stats    *WinpmemInfo
+	last_run *Run
 
 	logger Logger
+}
+
+func (self *Imager) getRun(offset int64) *Run {
+	if self.last_run != nil &&
+		self.last_run.Address <= offset &&
+		self.last_run.Address+self.last_run.Size > offset {
+		return self.last_run
+	}
+
+	for _, run := range self.stats.Run {
+		if offset < int64(run.BaseAddress) {
+			return &Run{
+				Address: offset,
+				Size:    int64(run.BaseAddress) - offset,
+				Sparse:  true,
+			}
+		}
+
+		if offset >= int64(run.BaseAddress) &&
+			offset < int64(run.BaseAddress+run.NumberOfBytes) {
+			res := &Run{
+				Address: int64(run.BaseAddress),
+				Size:    int64(run.NumberOfBytes),
+				Sparse:  false,
+			}
+			self.last_run = res
+			return res
+		}
+	}
+
+	return &Run{Sparse: true}
+}
+
+func (self *Imager) readAt(buf []byte, offset int64) (int, error) {
+	run := self.getRun(offset)
+
+	if run.Size == 0 {
+		return 0, io.EOF
+	}
+
+	to_read := int(run.Size)
+	if to_read > len(buf) {
+		to_read = len(buf)
+	}
+
+	// Zero pad if needed
+	if run.Sparse {
+		for i := 0; i < to_read; i++ {
+			buf[i] = 0
+		}
+		return to_read, nil
+	}
+
+	_, err := windows.Seek(self.fd, int64(offset), os.SEEK_SET)
+	if err != nil {
+		return 0, err
+	}
+
+	actual_read := uint32(0)
+	err = windows.ReadFile(self.fd, buf[:to_read], &actual_read, nil)
+	if err != nil {
+		// Large Read failed, read in pages and pad any failed pages
+		for i := 0; i < to_read; i += PAGE_SIZE {
+
+			_, err = windows.Seek(self.fd, int64(i)+offset, os.SEEK_SET)
+			if err != nil {
+				return 0, err
+			}
+
+			err := windows.ReadFile(self.fd, buf[:PAGE_SIZE], &actual_read, nil)
+			if err != nil {
+				// Pad the bad page
+				for j := 0; j < PAGE_SIZE; j++ {
+					buf[i+j] = 0
+				}
+			}
+		}
+		return to_read, nil
+	}
+
+	return int(actual_read), err
+}
+
+func (self *Imager) ReadAt(buf []byte, offset int64) (int, error) {
+	self.mu.Lock()
+	defer self.mu.Unlock()
+
+	// Combine short reads into large ones
+	i := 0
+	for {
+		n, err := self.readAt(buf[i:], offset+int64(i))
+		if err == io.EOF || n == 0 {
+			return i, nil
+		}
+
+		if err != nil {
+			return i, err
+		}
+
+		i += n
+
+		if i >= len(buf) {
+			return i, nil
+		}
+	}
 }
 
 func (self *Imager) SetMode(mode PmemMode) error {
