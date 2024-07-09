@@ -16,8 +16,9 @@ type Imager struct {
 
 	fd windows.Handle
 
-	stats    *WinpmemInfo
-	last_run *Run
+	stats         *WinpmemInfo
+	last_run      *Run
+	sparse_output bool
 
 	logger Logger
 }
@@ -31,11 +32,13 @@ func (self *Imager) getRun(offset int64) *Run {
 
 	for _, run := range self.stats.Run {
 		if offset < int64(run.BaseAddress) {
-			return &Run{
+			res := &Run{
 				Address: offset,
 				Size:    int64(run.BaseAddress) - offset,
 				Sparse:  true,
 			}
+			self.last_run = res
+			return res
 		}
 
 		if offset >= int64(run.BaseAddress) &&
@@ -163,14 +166,23 @@ func (self *Imager) getStats() (*WinpmemInfo, error) {
 	return info.Info(), nil
 }
 
-func (self *Imager) pad(size uint64, w io.Writer) error {
-	write_seeker, ok := w.(io.WriteSeeker)
-	if ok {
-		self.logger.Progress(int(size / PAGE_SIZE))
+func (self *Imager) SetSparse() {
+	self.mu.Lock()
+	defer self.mu.Unlock()
 
-		// Support sparse files if the filesystem allows it
-		_, err := write_seeker.Seek(int64(size), os.SEEK_CUR)
-		return err
+	self.sparse_output = true
+}
+
+func (self *Imager) pad(size uint64, w io.Writer) error {
+	if self.sparse_output {
+		write_seeker, ok := w.(io.WriteSeeker)
+		if ok {
+			self.logger.Progress(int(size / PAGE_SIZE))
+
+			// Support sparse files if the filesystem allows it
+			_, err := write_seeker.Seek(int64(size), os.SEEK_CUR)
+			return err
+		}
 	}
 
 	for offset := uint64(0); offset < size; {
@@ -285,16 +297,20 @@ func (self *Imager) WriteTo(w io.Writer) error {
 			if err != nil {
 				return err
 			}
+
 			offset = base_addr
 		}
 
 		self.logger.Info(
-			"Copying %v pages from %#x", number_of_bytes/PAGE_SIZE, offset)
+			"Copying %v pages (%#x) from %#x", number_of_bytes/PAGE_SIZE,
+			number_of_bytes, offset)
 
 		err := self.copyRange(base_addr, number_of_bytes, w)
 		if err != nil {
 			return err
 		}
+
+		offset = base_addr + number_of_bytes
 	}
 	return nil
 }
