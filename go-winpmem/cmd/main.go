@@ -6,8 +6,8 @@ import (
 	"os"
 	"time"
 
+	winpmem "github.com/Velocidex/WinPmem/go-winpmem"
 	"github.com/alecthomas/kingpin"
-	winpmem "github.com/scudette/WinPmem/go-winpmem"
 )
 
 var (

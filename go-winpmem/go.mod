@@ -1,4 +1,4 @@
-module github.com/scudette/WinPmem/go-winpmem
+module github.com/Velocidex/WinPmem/go-winpmem
 
 go 1.22.2
 
