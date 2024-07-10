@@ -43,8 +43,11 @@ func doDecompress() error {
 	}
 	defer out_fd.Close()
 
+	ctx, cancel := install_sig_handler()
+	defer cancel()
+
 	logger := &DecompressionLogger{Logger: winpmem.NewLogger(*verbose)}
-	return winpmem.CopyAndLog(decompressed_fd, out_fd, logger)
+	return winpmem.CopyAndLog(ctx, decompressed_fd, out_fd, logger)
 }
 
 func init() {

@@ -2,7 +2,9 @@ package winpmem
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
+	"errors"
 	"io"
 	"os"
 	"sync"
@@ -173,7 +175,9 @@ func (self *Imager) SetSparse() {
 	self.sparse_output = true
 }
 
-func (self *Imager) pad(size uint64, w io.Writer) error {
+func (self *Imager) pad(
+	ctx context.Context,
+	size uint64, w io.Writer) error {
 	if self.sparse_output {
 		write_seeker, ok := w.(io.WriteSeeker)
 		if ok {
@@ -200,6 +204,12 @@ func (self *Imager) pad(size uint64, w io.Writer) error {
 		self.logger.Progress(int(to_write / PAGE_SIZE))
 
 		offset += uint64(n)
+
+		select {
+		case <-ctx.Done():
+			return errors.New("Cancelled!")
+		default:
+		}
 	}
 
 	return nil
@@ -207,7 +217,9 @@ func (self *Imager) pad(size uint64, w io.Writer) error {
 
 // copyRange copies a range from the base_addr to the writer. We
 // assume size is a multiple of PAGE_SIZE
-func (self *Imager) copyRange(base_addr, size uint64, w io.Writer) error {
+func (self *Imager) copyRange(
+	ctx context.Context,
+	base_addr, size uint64, w io.Writer) error {
 	buff := make([]byte, BUFSIZE)
 	pad := make([]byte, PAGE_SIZE)
 	end := base_addr + size
@@ -275,12 +287,17 @@ func (self *Imager) copyRange(base_addr, size uint64, w io.Writer) error {
 			offset += uint64(actual_read)
 		}
 
+		select {
+		case <-ctx.Done():
+			return errors.New("Cancelled!")
+		default:
+		}
 	}
 
 	return nil
 }
 
-func (self *Imager) WriteTo(w io.Writer) error {
+func (self *Imager) WriteTo(ctx context.Context, w io.Writer) error {
 	var offset uint64
 	for _, r := range self.stats.Run {
 		base_addr := uint64(r.BaseAddress)
@@ -293,7 +310,7 @@ func (self *Imager) WriteTo(w io.Writer) error {
 			self.logger.Info(
 				"Padding %v pages from %#x", pad_size/PAGE_SIZE, offset)
 
-			err := self.pad(pad_size, w)
+			err := self.pad(ctx, pad_size, w)
 			if err != nil {
 				return err
 			}
@@ -305,7 +322,7 @@ func (self *Imager) WriteTo(w io.Writer) error {
 			"Copying %v pages (%#x) from %#x", number_of_bytes/PAGE_SIZE,
 			number_of_bytes, offset)
 
-		err := self.copyRange(base_addr, number_of_bytes, w)
+		err := self.copyRange(ctx, base_addr, number_of_bytes, w)
 		if err != nil {
 			return err
 		}

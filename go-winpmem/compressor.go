@@ -2,6 +2,7 @@ package winpmem
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -66,7 +67,8 @@ func GetDecompressor(header []byte, r io.Reader) (io.Reader, error) {
 	return nil, errors.New("Unknown compression scheme")
 }
 
-func CopyAndLog(in io.Reader, out io.Writer, logger Logger) error {
+func CopyAndLog(
+	ctx context.Context, in io.Reader, out io.Writer, logger Logger) error {
 	buff := make([]byte, 1024*PAGE_SIZE)
 	for {
 		n, err := in.Read(buff)
@@ -82,6 +84,12 @@ func CopyAndLog(in io.Reader, out io.Writer, logger Logger) error {
 		_, err = out.Write(buff[:n])
 		if err != nil {
 			return err
+		}
+
+		select {
+		case <-ctx.Done():
+			return errors.New("Cancelled!")
+		default:
 		}
 	}
 }
