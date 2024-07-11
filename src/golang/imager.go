@@ -5,129 +5,17 @@ import (
 	"encoding/binary"
 	"io"
 	"os"
-	"sync"
 	"syscall"
 
 	"golang.org/x/sys/windows"
 )
 
 type Imager struct {
-	mu sync.Mutex
-
 	fd windows.Handle
 
-	stats         *WinpmemInfo
-	last_run      *Run
-	sparse_output bool
+	stats *WinpmemInfo
 
 	logger Logger
-}
-
-func (self *Imager) getRun(offset int64) *Run {
-	if self.last_run != nil &&
-		self.last_run.Address <= offset &&
-		self.last_run.Address+self.last_run.Size > offset {
-		return self.last_run
-	}
-
-	for _, run := range self.stats.Run {
-		if offset < int64(run.BaseAddress) {
-			res := &Run{
-				Address: offset,
-				Size:    int64(run.BaseAddress) - offset,
-				Sparse:  true,
-			}
-			self.last_run = res
-			return res
-		}
-
-		if offset >= int64(run.BaseAddress) &&
-			offset < int64(run.BaseAddress+run.NumberOfBytes) {
-			res := &Run{
-				Address: int64(run.BaseAddress),
-				Size:    int64(run.NumberOfBytes),
-				Sparse:  false,
-			}
-			self.last_run = res
-			return res
-		}
-	}
-
-	return &Run{Sparse: true}
-}
-
-func (self *Imager) readAt(buf []byte, offset int64) (int, error) {
-	run := self.getRun(offset)
-
-	if run.Size == 0 {
-		return 0, io.EOF
-	}
-
-	to_read := int(run.Size)
-	if to_read > len(buf) {
-		to_read = len(buf)
-	}
-
-	// Zero pad if needed
-	if run.Sparse {
-		for i := 0; i < to_read; i++ {
-			buf[i] = 0
-		}
-		return to_read, nil
-	}
-
-	_, err := windows.Seek(self.fd, int64(offset), os.SEEK_SET)
-	if err != nil {
-		return 0, err
-	}
-
-	actual_read := uint32(0)
-	err = windows.ReadFile(self.fd, buf[:to_read], &actual_read, nil)
-	if err != nil {
-		// Large Read failed, read in pages and pad any failed pages
-		for i := 0; i < to_read; i += PAGE_SIZE {
-
-			_, err = windows.Seek(self.fd, int64(i)+offset, os.SEEK_SET)
-			if err != nil {
-				return 0, err
-			}
-
-			err := windows.ReadFile(self.fd, buf[:PAGE_SIZE], &actual_read, nil)
-			if err != nil {
-				// Pad the bad page
-				for j := 0; j < PAGE_SIZE; j++ {
-					buf[i+j] = 0
-				}
-			}
-		}
-		return to_read, nil
-	}
-
-	return int(actual_read), err
-}
-
-func (self *Imager) ReadAt(buf []byte, offset int64) (int, error) {
-	self.mu.Lock()
-	defer self.mu.Unlock()
-
-	// Combine short reads into large ones
-	i := 0
-	for {
-		n, err := self.readAt(buf[i:], offset+int64(i))
-		if err == io.EOF || n == 0 {
-			return i, nil
-		}
-
-		if err != nil {
-			return i, err
-		}
-
-		i += n
-
-		if i >= len(buf) {
-			return i, nil
-		}
-	}
 }
 
 func (self *Imager) SetMode(mode PmemMode) error {
@@ -166,23 +54,14 @@ func (self *Imager) getStats() (*WinpmemInfo, error) {
 	return info.Info(), nil
 }
 
-func (self *Imager) SetSparse() {
-	self.mu.Lock()
-	defer self.mu.Unlock()
-
-	self.sparse_output = true
-}
-
 func (self *Imager) pad(size uint64, w io.Writer) error {
-	if self.sparse_output {
-		write_seeker, ok := w.(io.WriteSeeker)
-		if ok {
-			self.logger.Progress(int(size / PAGE_SIZE))
+	write_seeker, ok := w.(io.WriteSeeker)
+	if ok {
+		self.logger.Progress(int(size / PAGE_SIZE))
 
-			// Support sparse files if the filesystem allows it
-			_, err := write_seeker.Seek(int64(size), os.SEEK_CUR)
-			return err
-		}
+		// Support sparse files if the filesystem allows it
+		_, err := write_seeker.Seek(int64(size), os.SEEK_CUR)
+		return err
 	}
 
 	for offset := uint64(0); offset < size; {
@@ -297,20 +176,16 @@ func (self *Imager) WriteTo(w io.Writer) error {
 			if err != nil {
 				return err
 			}
-
 			offset = base_addr
 		}
 
 		self.logger.Info(
-			"Copying %v pages (%#x) from %#x", number_of_bytes/PAGE_SIZE,
-			number_of_bytes, offset)
+			"Copying %v pages from %#x", number_of_bytes/PAGE_SIZE, offset)
 
 		err := self.copyRange(base_addr, number_of_bytes, w)
 		if err != nil {
 			return err
 		}
-
-		offset = base_addr + number_of_bytes
 	}
 	return nil
 }
