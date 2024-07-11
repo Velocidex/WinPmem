@@ -122,7 +122,10 @@ func doAcquire() error {
 	}
 	defer closer()
 
-	return imager.WriteTo(compressed_writer)
+	ctx, cancel := install_sig_handler()
+	defer cancel()
+
+	return imager.WriteTo(ctx, compressed_writer)
 }
 
 func init() {
