@@ -154,6 +154,11 @@ NTSTATUS wddDispatchDeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP
     PVOID outBuffer;
     PDEVICE_EXTENSION ext;
     ULONG InputLen, OutputLen;
+	
+	unsigned char * mdl_inbuffer = NULL;
+	unsigned char * mdl_outbuffer = NULL;
+    PMDL mdl_in = NULL;  // The KM VA for the nailed UM PA.
+    PMDL mdl_out = NULL; // The KM VA for the nailed UM PA.
 
     PAGED_CODE();
 
@@ -172,48 +177,126 @@ NTSTATUS wddDispatchDeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP
     inBuffer = IrpStack->Parameters.DeviceIoControl.Type3InputBuffer;
     outBuffer = Irp->UserBuffer;
 
-
     OutputLen = IrpStack->Parameters.DeviceIoControl.OutputBufferLength;
     InputLen = IrpStack->Parameters.DeviceIoControl.InputBufferLength;
     IoControlCode = IrpStack->Parameters.DeviceIoControl.IoControlCode;
+	
+	// Point 1: the inputbuffer.
+	
+	// Not every ioctl uses an inputbuffer, but if there is one, nail it.
+	
+	if ((inBuffer) && ((UINT64)inBuffer < MM_USER_PROBE_ADDRESS))  // pre-check, just for shortening the fail path.
+	{
+		mdl_in = IoAllocateMdl(inBuffer, InputLen,  FALSE, TRUE, NULL); 
+		if (!mdl_in)
+		{
+			status = STATUS_INSUFFICIENT_RESOURCES;
+			goto exit;
+		}
+
+		try
+		{
+			MmProbeAndLockPages(mdl_in, UserMode, IoReadAccess);
+		}
+		except(EXCEPTION_EXECUTE_HANDLER)
+		{
+			status = GetExceptionCode();
+			DbgPrint("Error %08x: exception while locking UM inbuffer.\n", status);
+			IoFreeMdl(mdl_in);
+			goto exit;
+		}
+
+		// If we got here, MmProbeAndLockPages probed 
+		// and we have the physical pages resident.
+		// The UM VA address might still become invalid 
+		// (only if the Usermode program is malicious).
+		// 	Thus, we must get our own VA for the PA to be actually safe.
+
+		mdl_inbuffer = MmGetSystemAddressForMdlSafe(mdl_in, NormalPagePriority );
+
+		if (!mdl_inbuffer)
+		{
+			// According to current MSDN, when MmGetSystemAddressForMdlSafe was used, 
+			// these following steps are not explicitly required. 
+			// Not trusting this and prefer doing it explicitly.
+			
+			MmUnlockPages(mdl_in);
+			IoFreeMdl(mdl_in);
+			status = STATUS_INSUFFICIENT_RESOURCES;
+			goto exit;
+		}
+	}
+	// inputbuffer, if any, is now accessible via KM VA. 
+	
+	// Point 2: the outputbuffer.
+	
+	// Not every ioctl uses an outputbuffer, but if there is one, we nail it, too.
+	
+	// Allocate an mdl. 
+	if ((outBuffer) && ((UINT64)outBuffer < MM_USER_PROBE_ADDRESS)) // pre-check, for fail fast
+	{
+		mdl_out = IoAllocateMdl(outBuffer, OutputLen,  FALSE, TRUE, NULL); 
+		if (!mdl_out)
+		{
+			status = STATUS_INSUFFICIENT_RESOURCES;
+			goto exit;
+		}
+
+		try
+		{
+			MmProbeAndLockPages(mdl_out, UserMode, IoWriteAccess);
+		}
+		except(EXCEPTION_EXECUTE_HANDLER)
+		{
+			status = GetExceptionCode();
+			DbgPrint("Error %08x: exception while locking UM outbuffer.\n", status);
+			IoFreeMdl(mdl_out);
+			goto exit;
+		}
+		
+		mdl_outbuffer = MmGetSystemAddressForMdlSafe(mdl_out, NormalPagePriority );
+
+		if (!mdl_outbuffer)
+		{
+			// According to current MSDN, when MmGetSystemAddressForMdlSafe was used, 
+			// these following steps are not explicitly required. 
+			// Not trusting this and prefer doing it explicitly.
+			
+			MmUnlockPages(mdl_out);
+			IoFreeMdl(mdl_out);
+			status = STATUS_INSUFFICIENT_RESOURCES;
+			goto exit;
+		}
+		
+		// Now we have an own KM VA for the UM PA stuff. 
+	
+	}
+	
+	// outputbuffer, if any, is now accessible via KM VA, using R+W PTE.
 
     switch (IoControlCode)
     {
-
-    // Return information about memory layout etc through this ioctrl.
+	
     case IOCTL_GET_INFO:
     {
         PWINPMEM_MEMORY_INFO pInfo = NULL;
 
-        if (!outBuffer)
+        if (!mdl_outbuffer)
         {
-            DbgPrint("Error: outbuffer invalid in device io dispatch.\n");
+            DbgPrint("Error: no outbuffer in IOCTL_GET_INFO.\n");
             status = STATUS_INVALID_PARAMETER;
             goto exit;
         }
 
+		// Check if the acquired space accomodates for the WINPMEM_MEMORY_INFO struct.
         if (OutputLen < sizeof(WINPMEM_MEMORY_INFO))
         {
-            DbgPrint("Error: outbuffer too small for the info struct!\n");
+            DbgPrint("Error: outbuffersize too small for the info struct!\n");
             status = STATUS_INFO_LENGTH_MISMATCH;
             goto exit;
         }
 
-        try
-        {
-            ProbeForRead( outBuffer, sizeof(WINPMEM_MEMORY_INFO), sizeof( UCHAR ) );
-            ProbeForWrite( outBuffer, sizeof(WINPMEM_MEMORY_INFO), sizeof( UCHAR ) );
-        }
-        except(EXCEPTION_EXECUTE_HANDLER)
-        {
-            status = GetExceptionCode();
-            DbgPrint("Error: 0x%08x, probe in Device io dispatch, outbuffer. A naughty process sent us a bad/nonexisting buffer.\n", status);
-
-            status = STATUS_INVALID_PARAMETER; // Naughty usermode process, this is your fault.
-            goto exit;
-        }
-
-        pInfo = (PWINPMEM_MEMORY_INFO) outBuffer;
+        pInfo = (PWINPMEM_MEMORY_INFO) mdl_outbuffer;
 
         // Ensure we clear the buffer first.
         RtlZeroMemory(pInfo, sizeof(WINPMEM_MEMORY_INFO));
@@ -237,7 +320,7 @@ NTSTATUS wddDispatchDeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP
         pInfo->KernBase.QuadPart = ext->kernelbase.QuadPart;
 
         // Fill in KPCR.
-        GetKPCR(pInfo);
+        GetKPCR(pInfo); 
 
         // This is the length of the response.
         Irp->IoStatus.Information = sizeof(WINPMEM_MEMORY_INFO);
@@ -259,26 +342,14 @@ NTSTATUS wddDispatchDeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP
             goto exit;
         }
 
-        if ((!(inBuffer)) || (InputLen < sizeof(ULONG)))
+        if ((!mdl_inbuffer) || (InputLen < sizeof(ULONG)))
         {
-            DbgPrint("Error: InBuffer in device io dispatch was invalid.\n");
+            DbgPrint("Error: no (adequate) inbuffer in IOCTL_SET_MODE.\n");
             status = STATUS_INFO_LENGTH_MISMATCH;
             goto exit;
         }
 
-        try
-        {
-            ProbeForRead( inBuffer, sizeof(ULONG), sizeof( UCHAR ) );
-            mode = *(PULONG)inBuffer;
-        }
-        except(EXCEPTION_EXECUTE_HANDLER)
-        {
-            status = GetExceptionCode();
-            DbgPrint("Error: 0x%08x, IOCTL_SET_MODE, Inbuffer. A naughty process sent us a bad/nonexisting buffer.\n", status);
-
-            status = STATUS_INVALID_PARAMETER; // Naughty usermode process, this is your fault.
-            goto exit;
-        }
+        mode = *(PULONG)mdl_inbuffer;
 
         switch(mode)
         {
@@ -314,12 +385,12 @@ NTSTATUS wddDispatchDeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP
                 }
                 else
                 {
-                    DbgPrint("Error: the acquisition mode PTE failed setup and is not available.\n");
+                    DbgPrint("Error: the acquisition mode PTE is not available for your system.\n");
                     status = STATUS_NOT_SUPPORTED;
                 }
                 #else
 
-                WinDbgPrint("PTE Remapping has not been implemented on 32 bit OS.\n");
+                DbgPrint("PTE Remapping has not been implemented on 32 bit OS.\n");
                 status = STATUS_NOT_IMPLEMENTED;
 
                 #endif
@@ -327,7 +398,7 @@ NTSTATUS wddDispatchDeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP
                 break;
 
             default:
-                WinDbgPrint("Invalid acquisition mode %u.\n", mode);
+                DbgPrint("Invalid acquisition mode %u.\n", mode);
                 status = STATUS_INVALID_PARAMETER;
 
         }; // switch mode
@@ -337,11 +408,11 @@ NTSTATUS wddDispatchDeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP
 
 
 #if PMEM_WRITE_ENABLED == 1
-    case IOCTL_WRITE_ENABLE: // Actually this is a switch. You can turn write support off again.
+    case IOCTL_WRITE_ENABLE: // Actually this is a switch. You can turn write support off/on again.
     {
         // No in/outbuffers needed.
         ext->WriteEnabled = !ext->WriteEnabled;
-        WinDbgPrint("Write mode is %u. Do you know what you are doing?\n", ext->WriteEnabled);
+        DbgPrint("Write mode is %u. Do you know what you are doing?\n", ext->WriteEnabled);
         status = STATUS_SUCCESS;
 
     }; break;  // end of IOCTL_WRITE_ENABLE
@@ -359,91 +430,73 @@ NTSTATUS wddDispatchDeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP
 
         if (!ext->pte_data.pte_method_is_ready_to_use)
         {
-            DbgPrint("Error: the acquisition mode PTE failed setup and is not available.\n");
+            DbgPrint("Error: the acquisition mode PTE is not available for your system.\n");
             status = STATUS_NOT_SUPPORTED;
         }
-        else
+		
+		if ((!mdl_inbuffer) || (InputLen < sizeof(UINT64)))
         {
-            try
-            {
-                ProbeForRead( inBuffer, sizeof(UINT64), sizeof( UCHAR ) );
-                ProbeForWrite( outBuffer, sizeof(UINT64), sizeof( UCHAR ) );
+            DbgPrint("Error: no (adequate) inbuffer in IOCTL_REVERSE_SEARCH_QUERY.\n");
+            status = STATUS_INFO_LENGTH_MISMATCH;
+            goto exit;
+        }
+		
+		if ((!mdl_outbuffer) || (OutputLen < sizeof(UINT64)))
+        {
+            DbgPrint("Error: no (adequate) outbuffer in IOCTL_REVERSE_SEARCH_QUERY.\n");
+            status = STATUS_INFO_LENGTH_MISMATCH;
+            goto exit;
+        }
+		
+		In_VA.value = *(PUINT64) mdl_inbuffer;
 
-                In_VA.value = *(PUINT64) inBuffer;
+		WinDbgPrint("REVERSE SEARCH QUERY for: VA %llx.\n", In_VA.value);
 
-            }
-            except(EXCEPTION_EXECUTE_HANDLER)
-            {
-                status = GetExceptionCode();
-                DbgPrint("Error: 0x%08x, inbuffer in reverse query. A naughty process sent us a bad/nonexisting buffer.\n", status);
+		page_offset = (ULONG) In_VA.offset;
+		In_VA.value -= page_offset;
 
-                status = STATUS_INVALID_PARAMETER; // Naughty usermode process, this is your fault.
-                goto exit;
-            }
+		ASSERT(!In_VA.offset);
 
-            WinDbgPrint("REVERSE SEARCH QUERY for: VA %llx.\n", In_VA.value);
+		// At least one sanity check.
+		if (!In_VA.value)
+		{
+			DbgPrint("Error: invoker specified 0 as virtual address. Mistake?\n");
+			status = STATUS_ACCESS_DENIED;
+			goto exit;
+		}
 
-            page_offset = (ULONG) In_VA.offset;
-            In_VA.value -= page_offset;
+		pte_status = virt_find_pte(In_VA, &pPTE);
 
-            ASSERT(!In_VA.offset);
+		if (pte_status != PTE_SUCCESS)
+		{
+			// Remember todo: reverse search currently returns error on large pages (because not implemented).
+			WinDbgPrint("Reverse search found nothing: no present page for %llx. Sorry.\n", In_VA.value);
+			Out_PhysAddr = 0;
+		}
+		else
+		{
+			if (pPTE->present) // But virt_find_pte checked that already.
+			{
+				if (!pPTE->large_page)
+				{
+					Out_PhysAddr = ( PFN_TO_PAGE(pPTE->page_frame) ) + page_offset;  // normal calculation.
+				}
+				else
+				{
+					Out_PhysAddr = ( PFN_TO_PAGE(( pPTE->page_frame +  In_VA.pt_index)) ) + page_offset; // Large page calculation.
+				}
+			}
+			else
+			{
+				WinDbgPrint("Valid bit not set in PTE. Sorry.\n");
+				Out_PhysAddr = 0;
+			}
+		}
 
-            // At least one sanity check.
-            if (!In_VA.value)
-            {
-                DbgPrint("Error: invoker specified 0 as virtual address. Mistake?\n");
-                status = STATUS_ACCESS_DENIED;
-                goto exit;
-            }
+		*(PUINT64) mdl_outbuffer = Out_PhysAddr;
 
-            pte_status = virt_find_pte(In_VA, &pPTE);
-
-            if (pte_status != PTE_SUCCESS)
-            {
-                // Remember todo: reverse search currently returns error on large pages (because not implemented).
-                DbgPrint("Reverse search found nothing: no present page for %llx. Sorry.\n", In_VA.value);
-                Out_PhysAddr = 0;
-            }
-            else
-            {
-                if (pPTE->present) // But virt_find_pte checked that already.
-                {
-                    if (!pPTE->large_page)
-                    {
-                        Out_PhysAddr = ( PFN_TO_PAGE(pPTE->page_frame) ) + page_offset;  // normal calculation.
-                    }
-                    else
-                    {
-                        Out_PhysAddr = ( PFN_TO_PAGE(( pPTE->page_frame +  In_VA.pt_index)) ) + page_offset; // Large page calculation.
-                    }
-                }
-                else
-                {
-                    DbgPrint("Valid bit not set in PTE. Sorry.\n");
-                    Out_PhysAddr = 0;
-                }
-            }
-
-            // Because NEITHER buffer wasn't locked down:
-            try
-            {
-                ProbeForWrite( outBuffer, sizeof(UINT64), sizeof( UCHAR ) );
-
-                *(PUINT64) outBuffer = Out_PhysAddr;
-
-            }
-            except(EXCEPTION_EXECUTE_HANDLER)
-            {
-                status = GetExceptionCode();
-                DbgPrint("Error: 0x%08x, probe in reverse search query. A naughty process sent us a bad/nonexisting buffer.\n", status);
-
-                status = STATUS_INVALID_PARAMETER; // Naughty usermode process, this is your fault.
-                goto exit;
-            }
-
-            Irp->IoStatus.Information = sizeof(UINT64);
-
-        } // end of  else pte_data.pte_method_is_ready_to_use=yes
+		Irp->IoStatus.Information = sizeof(UINT64);
+		status = STATUS_SUCCESS;
 
         #else
 
@@ -462,9 +515,27 @@ NTSTATUS wddDispatchDeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP
   }
 
  exit:
-  Irp->IoStatus.Status = status;
-  IoCompleteRequest(Irp,IO_NO_INCREMENT);
-  return status;
+ 
+// unlock & free all mdls we might have.
+// According to current MSDN, when MmGetSystemAddressForMdlSafe was used, 
+// unlock & freeing is not explicitly required. 
+// Not trusting this and prefer doing it explicitly.
+
+	if (mdl_outbuffer)
+	{
+		MmUnlockPages(mdl_out);
+		IoFreeMdl(mdl_out);
+	}
+	
+	if (mdl_inbuffer)
+	{
+		MmUnlockPages(mdl_in);
+		IoFreeMdl(mdl_in);
+	}
+ 
+	Irp->IoStatus.Status = status;
+	IoCompleteRequest(Irp,IO_NO_INCREMENT);
+	return status;
 }
 
 
@@ -477,6 +548,7 @@ NTSTATUS DriverEntry (IN PDRIVER_OBJECT DriverObject,
     PDEVICE_OBJECT DeviceObject = NULL;
     PDEVICE_EXTENSION extension;
     ULONG FastioTag = 0x54505346;
+	UINT64 cr4 = 0;  // for level 5 check.
 
     UNREFERENCED_PARAMETER(RegistryPath);
 
@@ -502,7 +574,7 @@ NTSTATUS DriverEntry (IN PDRIVER_OBJECT DriverObject,
 
     if (!NT_SUCCESS(ntstatus))
     {
-        WinDbgPrint ("IoCreateDevice failed. => %08X\n", ntstatus);
+        DbgPrint ("IoCreateDevice failed. => %08X\n", ntstatus);
         // nothing to free until here.
         return ntstatus;
     }
@@ -555,7 +627,7 @@ NTSTATUS DriverEntry (IN PDRIVER_OBJECT DriverObject,
 
     if (!NT_SUCCESS(ntstatus))
     {
-        WinDbgPrint("IoCreateSymbolicLink failed. => %08X\n", ntstatus);
+        DbgPrint("IoCreateSymbolicLink failed. => %08X\n", ntstatus);
         // The unload routine will take care of deleting things and we should not double free things.
         IoUnload(DriverObject); // Calling the Unload Routine or freeing all things that happened until here is actually required.
 
@@ -584,17 +656,31 @@ NTSTATUS DriverEntry (IN PDRIVER_OBJECT DriverObject,
     }
 
     #if defined(_WIN64)
-    // setup PTE mode
-    if (!setupBackupForOriginalRoguePage(&extension->pte_data))
-    {
-        extension->pte_data.pte_method_is_ready_to_use = FALSE;
-        DbgPrint("Warning: PTE method failed! (You will not be able to use this method).\n");
-    }
-    else
-    {
-        // Indicate it is usable now.
-        extension->pte_data.pte_method_is_ready_to_use = TRUE;
-    }
+    // setup PTE mode part.
+	
+	// Check if level 5 present (la57).
+	// We only support level 4.
+	cr4 = __readcr4();
+	if (cr4 & (1 << 12)) // la57 bit set?
+	{
+		DbgPrint("Warning: level 5 paging system found.\n");
+		DbgPrint("You can try the physical memory device method, but the PTE method is not implemented for level 5.\n");
+		DbgPrint("Warning: Winpmem has never been tested on level 5 paging systems.\n");
+		extension->pte_data.pte_method_is_ready_to_use = FALSE;
+	}
+	else // PTE method setup.
+	{
+		if (!setupBackupForOriginalRoguePage(&extension->pte_data))
+		{
+			extension->pte_data.pte_method_is_ready_to_use = FALSE;
+			DbgPrint("Warning: PTE method failed (unknown reason)!\n(You will not be able to use this method).\n");
+		}
+		else
+		{
+			// Indicate it is usable now.
+			extension->pte_data.pte_method_is_ready_to_use = TRUE;
+		}
+	}
     #endif
 
     ExInitializeFastMutex(&extension->mu);

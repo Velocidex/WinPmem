@@ -26,7 +26,8 @@
 #if defined(_WIN64)
 
 // Section for PTE remapping maneuvers. Fulfills special requirements.
-#pragma section(".roguepage",read,write,nopage)
+#pragma section(".roguepage",read,write,nopage, nocache)
+// nocache definitely doesn't work. The cache disable bit won't be set.
 
 #endif
 

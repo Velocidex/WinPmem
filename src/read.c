@@ -47,7 +47,7 @@ BOOLEAN setupPhysMemSectionHandle(_Out_ PHANDLE pMemoryHandle)
 
     if (!NT_SUCCESS(ntstatus))
     {
-        DbgPrint("Error: failed ZwOpenSection(MemoryHandle) => %08X\n", ntstatus);
+        WinDbgPrint("Error: failed ZwOpenSection(MemoryHandle) => %08X\n", ntstatus);
         return FALSE;
     }
 
@@ -84,7 +84,7 @@ ULONG PhysicalMemoryPartialRead(_In_ HANDLE memoryHandle,
 
     if ((ntstatus != STATUS_SUCCESS) || (!mapped_buffer))
     {
-        DbgPrint("Error %08x (method: phys mem device): ZwMapViewOfSection failed. physAddr was 0x%llX.\n", ntstatus, physAddr.QuadPart); // real error
+        WinDbgPrint("Error %08x (method: phys mem device): ZwMapViewOfSection failed. physAddr was 0x%llX.\n", ntstatus, physAddr.QuadPart); // real error
         return 0;
     }
 
@@ -109,7 +109,7 @@ ULONG PhysicalMemoryPartialRead(_In_ HANDLE memoryHandle,
     except(EXCEPTION_EXECUTE_HANDLER)
     {
         ntstatus = GetExceptionCode();
-        DbgPrint("Warning: read error %08x (method: phys mem device): unable to read %u bytes from %p.\n", ntstatus, to_read, mapped_buffer+page_offset);
+        WinDbgPrint("Warning: read error %08x (method: phys mem device): unable to read %u bytes from %p.\n", ntstatus, to_read, mapped_buffer+page_offset);
         goto error;
     }
 
@@ -176,14 +176,14 @@ ULONG MapIOPagePartialRead(_In_ LARGE_INTEGER physAddr, _Inout_ unsigned char * 
         }
         else
         {
-            DbgPrint("Error (method: map I/O): zero buffer returned from MmMapIoSpace (wanted to read %u bytes on %p).\n", to_read, mapped_buffer+page_offset); // real error
+            WinDbgPrint("Error (method: map I/O): zero buffer returned from MmMapIoSpace (wanted to read %u bytes on %p).\n", to_read, mapped_buffer+page_offset); // real error
             return 0;
         }
     }
     except(EXCEPTION_EXECUTE_HANDLER)
     {
         ntStatus = GetExceptionCode();
-        DbgPrint("Warning: read error %08x (method: map I/O): unable to read %u bytes from %p.\n", ntStatus, to_read, mapped_buffer+page_offset);
+        WinDbgPrint("Warning: read error %08x (method: map I/O): unable to read %u bytes from %p.\n", ntStatus, to_read, mapped_buffer+page_offset);
         return 0;
     }
 
@@ -239,7 +239,7 @@ ULONG PTEMmapPartialRead(_Inout_ PPTE_METHOD_DATA pPtedata, _In_ LARGE_INTEGER p
         } except(EXCEPTION_EXECUTE_HANDLER)
         {
             ntStatus = GetExceptionCode();
-            DbgPrint("Warning: read error %08x (method: PTE remap): unable to read %u bytes from %llx.\n", ntStatus, to_read, viewPage.QuadPart);
+            WinDbgPrint("Warning: read error %08x (method: PTE remap): unable to read %u bytes from %llx.\n", ntStatus, to_read, viewPage.QuadPart);
             return 0;
         }
         result = to_read;
@@ -273,17 +273,6 @@ NTSTATUS DeviceRead(_In_ PDEVICE_EXTENSION extension,
     if (extension->mode == PMEM_MODE_PTE)  // The PTE method is not thread-safe.
     {
         ExAcquireFastMutex(&extension->mu); // Don't forget to always free the Mutex!
-
-        // For PTE remap method, it might happen that at any point in time, 
-        // we are thrown off from the current CPU core, and later we continue 
-        // on another CPU core that has another private CPU cache.
-        // This does not seem to happen often, but it may happen. The read would return wrong data.
-        // What needs to be done is to nail the current process/thread to one specific CPU core (and its cache). 
-        // To keep the code simple, we choose the first core (there is always one at least) and 
-        // we don't revert, because this would do no favor in this special case.
-        // In context of Winpmem, the caller probably will call multiple times. 
-        KeSetSystemAffinityThreadEx(1);   // the formula is (1 << i), where i starts at 0, and maximum is i=n-1.
-        // In short: we make the caller stay on this processor core (and its cache) and expect further incoming calls.
     }
     #endif
 
@@ -364,7 +353,7 @@ NTSTATUS DeviceRead(_In_ PDEVICE_EXTENSION extension,
             // Thus, on read error, the usermode buffer will be left unscathed.
             // As a usermode program author, on read error, please remember this, especially when using uninitialized malloc'ed buffers!
 
-            DbgPrint("Device read: an error occurred: no bytes read.\n");
+            WinDbgPrint("Device read: an error occurred: no bytes read.\n");
             MmUnlockPages(mdl);
             IoFreeMdl(mdl);
             status = STATUS_IO_DEVICE_ERROR; // The reading method failed.
@@ -433,12 +422,7 @@ BOOLEAN pmemFastIoRead (
         goto bail_out;
     }
 
-    // DbgPrint("pmemFastIoRead\n");
-
-
-    // Do security checkings now.
-    // The usermode program is not allowed to order more than ONE PAGE_SIZE at a time.
-    // But the arbitrary read/write allows up to 1-PAGESIZE bytes. So...
+    // WinDbgPrint("pmemFastIoRead\n");
 
     if (!toxic_buffer)
     {
@@ -491,8 +475,8 @@ BOOLEAN pmemFastIoRead (
     // All things considered, the buffer looked good, of right size, and was accessible for write.
     // It's accepted for the next stage. Don't touch, it's still considered poisonous.
 
-    //DbgPrint("PmemRead\n");
-    //DbgPrint("Buffer: %llx, BufLen: 0x%x\n", physAddr, BufLen);
+    //WinDbgPrint("PmemRead\n");
+    //WinDbgPrint("Buffer: %llx, BufLen: 0x%x\n", physAddr, BufLen);
 
     // ASSERTION: this has been set by SET MODE IOCTL and was very carefully checked. (It is also prevented from being changed.)
     ASSERT((extension->mode == PMEM_MODE_IOSPACE) ||
@@ -507,12 +491,12 @@ BOOLEAN pmemFastIoRead (
         // As it is now, the issue is that we do not know whether a real error happened or 'only' a VSM/Hyper-v induced read error.
         // The read handler function returns either the number of bytes or 0 (but no status).
         // We could avoid that by giving a ULONG * bytes_read to the read handler function and have a NTSTATUS returned instead.
-        DbgPrint("Error in pmemFastIoRead: read error occurred: no bytes read.\n");
+        WinDbgPrint("Error in pmemFastIoRead: read error occurred: no bytes read.\n");
         status = STATUS_IO_DEVICE_ERROR;
         goto bail_out;
     }
 
-    // DbgPrint("Fast I/O read status on return: %08x.\n",status);
+    // WinDbgPrint("Fast I/O read status on return: %08x.\n",status);
 
     IoStatus->Status = status;
     IoStatus->Information = total_read;
@@ -606,7 +590,7 @@ NTSTATUS PmemRead(IN PDEVICE_OBJECT  DeviceObject, IN PIRP  Irp)
     {
 
         status = GetExceptionCode();
-        DbgPrint("Error 0x%08x, write-probe on usermode buffer failed in PmemRead. Bad/nonexisting buffer.\n", status);
+        WinDbgPrint("Error 0x%08x, write-probe on usermode buffer failed in PmemRead. Bad/nonexisting buffer.\n", status);
         goto bail_out;
     }
 
@@ -614,8 +598,8 @@ NTSTATUS PmemRead(IN PDEVICE_OBJECT  DeviceObject, IN PIRP  Irp)
     // It's accepted for the next stage. Don't touch, it's still considered poisonous.
 
 
-    //DbgPrint("PmemRead:\n");
-    //DbgPrint("Buffer: %llx, BufLen: 0x%x\n", physAddr, BufLen);
+    //WinDbgPrint("PmemRead:\n");
+    //WinDbgPrint("Buffer: %llx, BufLen: 0x%x\n", physAddr, BufLen);
 
     // ASSERTION: this has been set by SET MODE IOCTL and was very carefully checked. (It is also prevented from being changed.)
     ASSERT((extension->mode == PMEM_MODE_IOSPACE) ||
@@ -630,7 +614,7 @@ NTSTATUS PmemRead(IN PDEVICE_OBJECT  DeviceObject, IN PIRP  Irp)
         // As it is now, the issue is that we do not know whether a real error happened or 'only' a VSM/Hyper-v induced read error.
         // The read handler function returns either the number of bytes or 0 (but no status).
         // We could avoid that by giving a ULONG * bytes_read to the read handler function and have a NTSTATUS returned instead.
-        DbgPrint("Error in PmemRead: read error occurred: no bytes read.\n");
+        WinDbgPrint("Error in PmemRead: read error occurred: no bytes read.\n");
         status = STATUS_IO_DEVICE_ERROR;
         goto bail_out;
     }
@@ -752,7 +736,7 @@ NTSTATUS PmemWrite(IN PDEVICE_OBJECT  DeviceObject, IN PIRP  Irp)
 
     if (!extension->MemoryHandle)
     {
-        DbgPrint("Error (PmemWrite): physical device handle not available!\n"); // real error
+        WinDbgPrint("Error (PmemWrite): physical device handle not available!\n"); // real error
         written = 0;
         status = STATUS_IO_DEVICE_ERROR;
         goto exit;
@@ -765,7 +749,7 @@ NTSTATUS PmemWrite(IN PDEVICE_OBJECT  DeviceObject, IN PIRP  Irp)
 
     if ((status != STATUS_SUCCESS) || (!mapped_buffer))
     {
-        DbgPrint("Error %08x (PmemWrite): ZwMapViewOfSection failed (address %llx, offset %llx).\n", status, ViewSize.QuadPart, offset.QuadPart); // real error
+        WinDbgPrint("Error %08x (PmemWrite): ZwMapViewOfSection failed (address %llx, offset %llx).\n", status, ViewSize.QuadPart, offset.QuadPart); // real error
         written = 0;
         status = STATUS_IO_DEVICE_ERROR;
         goto exit;
@@ -787,7 +771,7 @@ NTSTATUS PmemWrite(IN PDEVICE_OBJECT  DeviceObject, IN PIRP  Irp)
     except(EXCEPTION_EXECUTE_HANDLER)
     {
         status = GetExceptionCode();
-        DbgPrint("Error 0x%08x (PmemWrite): writing %u bytes to %p failed.\n", status, BufLen, (mapped_buffer + page_offset));
+        WinDbgPrint("Error 0x%08x (PmemWrite): writing %u bytes to %p failed.\n", status, BufLen, (mapped_buffer + page_offset));
         written = 0;
         goto exit;
     }

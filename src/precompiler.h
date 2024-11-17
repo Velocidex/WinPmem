@@ -3,7 +3,11 @@
 
 // Important switches for compilation flavors.
 
-// Control whether there should be DbgPrint or not.
+// DBGPRINT 1/0: Controls the DbgPrint verbosity level.
+// DBGPRINT (0) is commonly the most useful and prints *only* unexpected critical/important DbgPrints.
+// Not being able to read from a (VSM protected) physical address is not considered a real error, and not printed with "DBGPRINT (0)" setting. 
+// These are technically read errors, but uncritical expected ones.
+// DBGPRINT (1) might be a bit spammy.
 #define DBGPRINT (1)   // Set to 1 for generic DbgPrints!
 
 // Beware, if reading the whole RAM this will spam you!

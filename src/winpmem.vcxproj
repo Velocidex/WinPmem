@@ -40,7 +40,7 @@
     <DriverTargetPlatform>Desktop</DriverTargetPlatform>
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
 
-    <TargetVersion>Windows7</TargetVersion>  <!-- Requires WDK10 and not WDK11. -->
+    <TargetVersion>Windows10</TargetVersion>  <!-- Requires WDK10 and not WDK11. -->
     <!-- <TargetVersion>Windows10</TargetVersion>  -->
     <!-- Wdk11 can only compile for minimum OS Win10, this covers only Win10-Win11. -->
     <!-- If you want Windows 7 support, too, you need the WDK10. -->
