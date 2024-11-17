@@ -93,7 +93,8 @@ PTE_STATUS pte_remap_rogue_page(_Inout_ PPTE_METHOD_DATA pPtedata, _In_ PHYS_ADD
     pPtedata->rogue_pte->page_frame = PAGE_TO_PFN(Phys_addr);
 
     // Flush the old pte from the tlbs in the system.
-    __invlpg(pPtedata->page_aligned_rogue_ptr.pointer);
+    // __invlpg(pPtedata->page_aligned_rogue_ptr.pointer);
+    // Not needed anymore, PTE has cache disable bit set. Changes to PTE have immediate result.
 
     return PTE_SUCCESS;
 }
@@ -313,6 +314,12 @@ BOOLEAN setupBackupForOriginalRoguePage(_Inout_ PPTE_METHOD_DATA pPtedata)
         pPtedata->pte_method_is_ready_to_use = FALSE;
         return FALSE;
     }
+    
+    // Set cache disable bit. 
+    pPtedata->rogue_pte->cache_disable = 1;
+    
+    // Flush the old pte from TLB.
+    __invlpg(pPtedata->page_aligned_rogue_ptr.pointer);
 
     pPtedata->pte_method_is_ready_to_use = TRUE;
 

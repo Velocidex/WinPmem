@@ -18,7 +18,7 @@
 #include "winpmem.h"
 #include <time.h>
 
-constexpr auto BUFF_SIZE = (4096 * 4096);
+constexpr auto MAXIMUM_BULK_READ = (4096 * 4096);  // 16 MB bulk read
 
 /**
  * Pad file in pad range with zeros.
@@ -27,35 +27,26 @@ __int64 WinPmem::pad(unsigned __int64 start, unsigned __int64 length)
 {
         DWORD bytes_written = 0;
         BOOL result = FALSE;
-        unsigned __int64 count = 0;
-        unsigned char * paddingbuffer = (unsigned char * ) malloc(BUFF_SIZE);
+        unsigned char * paddingbuffer = (unsigned char * ) malloc(MAXIMUM_BULK_READ);
         if (!paddingbuffer) {
                 return 0;
         };
-        ZeroMemory(paddingbuffer, BUFF_SIZE);
+        ZeroMemory(paddingbuffer, MAXIMUM_BULK_READ);
+        
+        // More noisy than helpful perhaps?
+        Log(TEXT("\n(Omitting & padding reserved block 0x%llX - 0x%llX, length 0x%llx.) \n"), start, start+length, length); 
+        // Seriously not that interesting watching us writing lots of zeros.
 
-        printf("pad\n");
-        printf(" - length: 0x%llx\n", length);
-        fflush(stdout);
-
-        while (length > 0) {
-                DWORD to_write = (DWORD)min((BUFF_SIZE), length);
+        while (length > 0) 
+        {
+                DWORD to_write = (DWORD)min((MAXIMUM_BULK_READ), length);  // Maximum buffer could be less than required pad length... that's why it's in a loop.
                 result = WriteFile(out_fd_, paddingbuffer, to_write, &bytes_written, NULL);
                 if ((!(result)) || (bytes_written != to_write))
                 {
-                        LogLastError(TEXT("Failed to write padding"));
+                        LogLastError(TEXT("Failed to write padding.\n"));
                         goto error;
                 }
 
-                // === Progress printing ===
-                if ((count % 50) == 0) {
-                    Log(TEXT("\n%02lld%% 0x%08llX "), (start * 100) / max_physical_memory_,
-                        start);
-                }
-
-                Log(TEXT("."));
-
-                count++;
                 out_offset += bytes_written;
                 length -= bytes_written;
         };
@@ -68,82 +59,16 @@ __int64 WinPmem::pad(unsigned __int64 start, unsigned __int64 length)
         return 0;
 }
 
-// Copy memory from start to end in 1 page increments.
-__int64 WinPmem::copy_memory_small(unsigned __int64 start, unsigned __int64 end) {
-    LARGE_INTEGER large_start;
 
-    // Total number of pages written.
-    unsigned __int64 count = 0;
-
-    BOOL result = FALSE;
-    const int buff_size = 0x1000;
-    unsigned char* largebuffer = (unsigned char*)malloc(buff_size);
-    unsigned char* nullbuffer = (unsigned char*)calloc(buff_size, 1);
-
-    if (start > max_physical_memory_) {
-        return 0;
-    }
-
-    // Clamp the region to the top of physical memory.
-    if (end > max_physical_memory_) {
-        end = max_physical_memory_;
-    }
-
-    while (start < end) {
-        DWORD to_write = (DWORD)min((buff_size), end - start);
-        DWORD bytes_read = 0;
-        DWORD bytes_written = 0;
-
-        large_start.QuadPart = start;
-
-        // seek input stream to the required offset.
-        result = SetFilePointerEx(fd_, large_start, NULL, FILE_BEGIN);
-
-        if (!(result)) {
-            LogLastError(TEXT("Failed to seek in the pmem device.\n"));
-            goto error;
-        }
-
-        // read from memory stream
-        result = ReadFile(fd_, largebuffer, to_write, &bytes_read, NULL);
-
-        // Page read failed - pad with nulls and keep going.
-        if ((!(result)) || (bytes_read != to_write))
-        {
-            result = WriteFile(out_fd_, nullbuffer, buff_size, &bytes_written, NULL);
-        }
-        else
-        {
-            result = WriteFile(out_fd_, largebuffer, bytes_read, &bytes_written, NULL);
-        }
-
-        if (!result)
-        {
-            LogLastError(TEXT("Failed to write image file"));
-            goto error;
-        }
-
-        start += to_write;
-        count++;
-    }
-    if (largebuffer) free(largebuffer);
-    if (nullbuffer) free(nullbuffer);
-    return 1;
-
-error:
-    if (largebuffer) free(largebuffer);
-    if (nullbuffer) free(nullbuffer);
-    return 0;
-}
 
 __int64 WinPmem::copy_memory(unsigned __int64 start, unsigned __int64 end) {
         LARGE_INTEGER large_start;
 
-        // Total number of pages written.
-        unsigned __int64 count = 0;
+        unsigned __int64 dotCounter = 0;  // how much dots were already drawn.
 
         BOOL result = FALSE;
-        unsigned char * largebuffer = (unsigned char *) malloc(BUFF_SIZE); // ~ 16 MB
+        unsigned char * largebuffer = (unsigned char *) malloc(MAXIMUM_BULK_READ); // ~ 16 MB
+        unsigned char * nullbuffer = (unsigned char*)calloc(PAGE_SIZE, 1);  // One "padding" page, zeroed already.
 
         if (start > max_physical_memory_)
         {
@@ -153,17 +78,15 @@ __int64 WinPmem::copy_memory(unsigned __int64 start, unsigned __int64 end) {
         // Clamp the region to the top of physical memory.
         if (end > max_physical_memory_)
         {
-                end = max_physical_memory_;
+            end = max_physical_memory_;
         }
 
-        printf("\ncopy_memory\n");
-        printf(" - start: 0x%llx\n", start);
-        printf(" - end: 0x%llx\n", end);
-        fflush(stdout);
+        // More noisy than helpful perhaps?
+        Log(TEXT("\nWrite 0x%llx - 0x%llx, length: 0x%llx.\n"), start, end, (end-start));
 
         while(start < end)
         {
-                DWORD to_write = (DWORD) min((BUFF_SIZE), end - start); // ReadFile wants a DWORD, for whatever reason.
+                DWORD to_write = (DWORD) min((MAXIMUM_BULK_READ), end - start); // ReadFile wants a DWORD, for whatever reason.
                 DWORD bytes_read = 0;
                 DWORD bytes_written = 0;
 
@@ -185,47 +108,108 @@ __int64 WinPmem::copy_memory(unsigned __int64 start, unsigned __int64 end) {
 
                 // read
                 result = ReadFile(fd_, largebuffer, to_write, &bytes_read, NULL);
-
-                if (!result || (bytes_read != to_write)) // reading from winpmem (using large reads) failed in first instance.
+                
+                if (bytes_read)  // either Winpmem could read some bytes already ...
                 {
-                    // Indicates this 16mb buffer was read slowly.
-                    indicator = TEXT("x");
-                    result = copy_memory_small( start, start + to_write);
-                    // the second no-fail slow but sturdy approach, reads in tiny portions.
-                    // Any stubborn unreadable pages will be padded with zeros.
-                    // Does the writes on its own.
-                }
-                else // reading from winpmem (using large reads) went fine at first try.
-                {
+                    // If Winpmem managed to read some bytes in the bulk read, 
+                    // Write them to file now.
+                    // This is even true if ReadFile returns an error, which means that Winpmem could not read all the requested bytes.
+                    // But if winpmem indicates it could read n bytes, these n bytes should be considered "good".
+                    // Don't throw away 15.7 MB bytes of your 16 MB request.
                     result = WriteFile(out_fd_, largebuffer, bytes_read, &bytes_written, NULL);
-                }
+                    
+                    // Progress report, with '.'      
+                    if ((dotCounter % 50) == 0) 
+                    {
+                            Log(TEXT("\n%02lld%% 0x%08llX "), 
+                                (start * 100) / max_physical_memory_,
+                                start);
+                    }
 
-                if (!result)
+                    Log(indicator);
+                    dotCounter++;  // one dot was drawn
+                    
+                    // First, update the byte-counting variables already.
+                    out_offset += bytes_written; // Less than 16 MB if driver had to return earlier (and could not read the full 16 MB).
+                    start += bytes_written;
+                    
+                    if (!result)
+                    {
+                        // Also, Winpmem encountered a read error. There is no point of trying exactly that location again.
+                        // Instead, advance immediately one additional page, padded with zeros, and re-enter the loop with read pointer set on next page.
+                        
+                        // Progress report, with 'x', indicating exact position of the brick wall.
+                        
+                        indicator = TEXT("x");
+                        
+                        if ((dotCounter % 50) == 0) 
+                        {
+                                Log(TEXT("\n%02lld%% 0x%08llX "), 
+                                    (start * 100) / max_physical_memory_,
+                                    start);
+                        }
+
+                        Log(indicator);
+                        dotCounter++; // one dot was drawn
+                        
+                        // Now write one zero-padded page which was reported by Winpmem at this position.
+                        result = WriteFile(out_fd_, nullbuffer, PAGE_SIZE, &bytes_written, NULL);
+                        
+                        if ((!result) || (bytes_written != PAGE_SIZE)) // ASSERT that 4096 have been written by WriteFile API.
+                        {
+                          LogLastError(TEXT("WriteFile API failed when writing bytes to disk.\n"));
+                          goto error;
+                        }
+                        
+                        out_offset += PAGE_SIZE;
+                        start += PAGE_SIZE;
+                        
+                        // We hereby advance by a page.
+                        
+                    }
+                }
+                else // the else case, no bytes read at all.
                 {
-                  LogLastError(TEXT("Failed to write image file"));
-                  goto error;
+                    // That's the case when you currently try-walk over an unreadable physical memory location.
+                    // Proceed yourself by another +1 page and try again. Write down the unreadable page as zero-padded page.
+                    
+                    indicator = TEXT("x");
+                        
+                    if ((dotCounter % 50) == 0) 
+                    {
+                            Log(TEXT("\n%02lld%% 0x%08llX "), 
+                                (start * 100) / max_physical_memory_,
+                                start);
+                    }
+
+                    Log(indicator);
+                    dotCounter++; // one dot was drawn
+                    
+                    result = WriteFile(out_fd_, nullbuffer, PAGE_SIZE, &bytes_written, NULL);
+                    
+                    if ((!result) || (bytes_written != PAGE_SIZE)) // ASSERT that 4096 have been written by WriteFile API.
+                    {
+                      LogLastError(TEXT("WriteFile API failed when writing bytes to disk.\n"));
+                      goto error;
+                    }
+                    
+                    out_offset += PAGE_SIZE;
+                    start += PAGE_SIZE;
+                    
+                    // We hereby advance by a page.
                 }
-
-                out_offset += bytes_written;
-
-                // === Progress printing ===
-                if ((count % 50) == 0) {
-                        Log(TEXT("\n%02lld%% 0x%08llX "), (start * 100) / max_physical_memory_,
-                            start);
-                }
-
-                Log(indicator);
-
-                start += to_write;
-                count ++;
+                
         }
 
         Log(TEXT("\n"));
         if (largebuffer) free(largebuffer);
+        if (nullbuffer) free(nullbuffer);
         return 1;
 
 error:
+        Log(TEXT("\n"));
         if (largebuffer) free(largebuffer);
+        if (nullbuffer) free(nullbuffer);
         return 0;
 }
 
@@ -373,7 +357,7 @@ __int64 WinPmem::write_raw_image()
         BOOL result = FALSE;
         __int64 i;
         __int64 status = -1;
-        SYSTEMTIME st, lt;
+        SYSTEMTIME st;
         BYTE infoBuffer[sizeof(WINPMEM_MEMORY_INFO) + sizeof(LARGE_INTEGER) * 32] = { 0 };
 
         if(out_fd_==INVALID_HANDLE_VALUE)
@@ -441,9 +425,7 @@ __int64 WinPmem::write_raw_image()
         {
                 if(info.Run[i].BaseAddress.QuadPart > current)
                 {
-                        // pad zeros from current until begin of next RAM memory region.
-                  printf("Padding from 0x%08llX to 0x%08llX\n", current, info.Run[i].BaseAddress.QuadPart);
-                  fflush(stdout);
+                  // pad zeros from current until begin of next RAM memory region.
                   if (!pad(current, info.Run[i].BaseAddress.QuadPart - current))
                   {
                         printf("padding went terribly wrong! Cancelling & terminating. \n");
@@ -455,7 +437,7 @@ __int64 WinPmem::write_raw_image()
 
                 // write next RAM memory region to file.
 
-                result = copy_memory(info.Run[i].BaseAddress.QuadPart, info.Run[i].BaseAddress.QuadPart + info.Run[i].NumberOfBytes.QuadPart);
+                result = (BOOL) copy_memory(info.Run[i].BaseAddress.QuadPart, info.Run[i].BaseAddress.QuadPart + info.Run[i].NumberOfBytes.QuadPart);
 
                 if (!result)
                 {
