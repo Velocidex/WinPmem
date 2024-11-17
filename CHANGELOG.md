@@ -1,3 +1,12 @@
+### 17. Nov 2024
+
+* Refactored device io control, adopted for nail first, ask later. This is because it is hard not to lose the overview of the numerous ioctl codes. Each case may or may not require an input or/and outputbuffer that needs to be secured properly. Now it's nail first - ask later.
+* Added support for detecting a level 5 paging system. They are still rare, but they exist. Azure machines and modern Windows servers with top tier hardware might have level 5. If level 5 is detected, the PTE method will be disabled. It should still work with the other provided methods, but will take an eternity.
+* Made DbgPrints (mostly) toggleable again. (Toggle is in precompiler.h, *not* toggled via the vcxproj debug switch. Being able to test the release version with verbose debug print on is important.)
+* Made Winpmem rogue PTE TLB-uncached (cache disable bit). No TLB entry, no flushing, no nailing to one processor. (This is the most critical change!)
+* Improvements on the usermode program bulk reading logic.
+* Increased version number to 4.0.1, BETA, for now.
+
 ### 18. May 2024
 
 * Updated vcxproj file.
@@ -17,7 +26,7 @@ Needed: there are no build instruction in readme and Winpmem usage is a bit outd
 
 ### 27. Nov 2022, 3.0.3 *alpha*
 
-No bugs detected anymore, only small improvements, testing (and knowledge increase). 
+No bugs detected anymore, only small improvements, testing (and knowledge increase).
 Tried to resolve an issue with not being able to read certain pages inside the normal physical ranges, KD fails at these, too. It's not a Winpmem error.
 
 * **Important note**: the iospace method cannot be used as general purpose physical reading method. (For details, please refer to my comments in read.c.) In particular, it should urgently be thrown out of the mini tool. (Applicable also for the 2.0.1 version in the master branch.) It can cause hazard to use it in this purpose.

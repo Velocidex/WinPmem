@@ -1,3 +1,7 @@
+### 4.0.1 BETA version
+
+Significant performance improvements, new features (level 5 paging detection), possible bug fixes.
+
 ### 3.0.1 stable version
 
 
