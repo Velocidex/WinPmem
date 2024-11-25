@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"io/ioutil"
 	"os"
 	"time"
@@ -74,6 +75,9 @@ func doAcquire() error {
 	logger.Info("Writing driver to %v", *driver_path)
 
 	err = winpmem.InstallDriver(*driver_path, *service_name, logger)
+	if err != nil {
+		return err
+	}
 
 	defer winpmem.UninstallDriver(
 		*driver_path, *service_name, logger)
@@ -107,7 +111,7 @@ func doAcquire() error {
 
 	out_fd, err := winpmem.CreateFileForWriting(!*nosparse, *filename)
 	if err != nil {
-		return err
+		return fmt.Errorf("Creating sparse file error: %w. Disable sparse support with --nosparse flag.", err)
 	}
 	defer out_fd.Close()
 

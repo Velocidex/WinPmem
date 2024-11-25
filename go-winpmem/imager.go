@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"sync"
@@ -80,18 +81,21 @@ func (self *Imager) readAt(buf []byte, offset int64) (int, error) {
 
 	_, err := windows.Seek(self.fd, int64(offset), os.SEEK_SET)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("windows.Seek: seeking to %v %w", offset, err)
 	}
 
 	actual_read := uint32(0)
 	err = windows.ReadFile(self.fd, buf[:to_read], &actual_read, nil)
 	if err != nil {
-		// Large Read failed, read in pages and pad any failed pages
-		for i := 0; i < to_read; i += PAGE_SIZE {
+		pages_read := int(actual_read) / PAGE_SIZE
+
+		// Large Read failed, read in pages from the last successful
+		// place and pad any failed pages
+		for i := pages_read * PAGE_SIZE; i < to_read; i += PAGE_SIZE {
 
 			_, err = windows.Seek(self.fd, int64(i)+offset, os.SEEK_SET)
 			if err != nil {
-				return 0, err
+				return 0, fmt.Errorf("windows.Seek: to %v %w", int64(i)+offset, err)
 			}
 
 			err := windows.ReadFile(self.fd, buf[:PAGE_SIZE], &actual_read, nil)
@@ -105,7 +109,7 @@ func (self *Imager) readAt(buf []byte, offset int64) (int, error) {
 		return to_read, nil
 	}
 
-	return int(actual_read), err
+	return int(actual_read), fmt.Errorf("readAt: %w", err)
 }
 
 func (self *Imager) ReadAt(buf []byte, offset int64) (int, error) {
@@ -235,7 +239,7 @@ func (self *Imager) copyRange(
 		self.logger.Debug("Reading %#x from %#x", to_read, offset)
 		_, err := windows.Seek(self.fd, int64(offset), os.SEEK_SET)
 		if err != nil {
-			return err
+			return fmt.Errorf("windows.Seek: ro %v %w", offset, err)
 		}
 
 		err = windows.ReadFile(self.fd, buff[:to_read], &actual_read, nil)
@@ -245,13 +249,13 @@ func (self *Imager) copyRange(
 
 				_, err = windows.Seek(self.fd, int64(i), os.SEEK_SET)
 				if err != nil {
-					return err
+					return fmt.Errorf("windows.Seek: ro %v %w", offset, err)
 				}
 				err := windows.ReadFile(self.fd, buff[:PAGE_SIZE], &actual_read, nil)
 				if err != nil {
 					_, err := w.Write(pad)
 					if err != nil {
-						return err
+						return fmt.Errorf("write:  %w", err)
 					}
 					continue
 				}
