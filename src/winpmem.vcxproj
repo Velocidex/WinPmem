@@ -1,6 +1,6 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" ToolsVersion="12.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  
+
 <ItemGroup Label="ProjectConfigurations">
 
     <ProjectConfiguration Include="Debug|Win32">
@@ -44,7 +44,7 @@
     <!-- <TargetVersion>Windows10</TargetVersion>  -->
     <!-- Wdk11 can only compile for minimum OS Win10, this covers only Win10-Win11. -->
     <!-- If you want Windows 7 support, too, you need the WDK10. -->
-    
+
   </PropertyGroup>
 
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
@@ -56,7 +56,7 @@
   <PropertyGroup Label="Configuration" Condition="'$(Configuration)'=='Release'">
     <UseDebugLibraries>False</UseDebugLibraries>
   </PropertyGroup>
-  
+
   <PropertyGroup Label="Configuration" Condition="'$(Configuration)'=='Debug'">
     <UseDebugLibraries>True</UseDebugLibraries>
   </PropertyGroup>
