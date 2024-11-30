@@ -41,13 +41,6 @@
 
 #include "pte_mmap.h"
 
-// slightly enhanced non-null pointer checking / kernel address space sanity checking.
-#if defined(_WIN64)
-SIZE_T ValidKernel = 0xffff000000000000;
-#else
-SIZE_T ValidKernel = 0x80000000;
-#endif
-
 #define DEFAULT_SIZE_STR (250)
 DECLARE_UNICODE_STRING_SIZE(eventLogKeyEntry, DEFAULT_SIZE_STR);
 

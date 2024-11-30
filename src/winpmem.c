@@ -59,9 +59,9 @@ VOID IoUnload(IN PDRIVER_OBJECT DriverObject)
 
     // Checking every object allows to call the IoUnload routine from DriverEntry at any point for cleaning/freeing whatever needs to be freed/cleaned.
 
-    if ((SIZE_T) pDeviceObject > ValidKernel)
+    if ((SIZE_T) pDeviceObject > (SIZE_T) MM_SYSTEM_RANGE_START)
     {
-        ASSERT((SIZE_T) pDeviceObject->DeviceExtension > ValidKernel); // does not happen.
+        ASSERT((SIZE_T) pDeviceObject->DeviceExtension > (SIZE_T) MM_SYSTEM_RANGE_START); // does not happen.
         ext = (PDEVICE_EXTENSION) pDeviceObject->DeviceExtension;
 
         #if defined(_WIN64)
@@ -72,7 +72,7 @@ VOID IoUnload(IN PDRIVER_OBJECT DriverObject)
         RtlInitUnicodeString (&DeviceLinkUnicodeString, L"\\??\\" PMEM_DEVICE_NAME);
         IoDeleteSymbolicLink (&DeviceLinkUnicodeString);
 
-        if ((SIZE_T) (DriverObject->FastIoDispatch) > ValidKernel)
+        if ((SIZE_T) (DriverObject->FastIoDispatch) > (SIZE_T) MM_SYSTEM_RANGE_START)
         {
             ExFreePool(DriverObject->FastIoDispatch);
         }
@@ -425,13 +425,14 @@ NTSTATUS wddDispatchDeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP
         PTE_STATUS pte_status = PTE_SUCCESS;
         VIRT_ADDR In_VA;
         volatile PPTE pPTE;
-        PHYS_ADDR Out_PhysAddr;
+        PHYS_ADDR Out_PhysAddr = 0;
         ULONG page_offset;
 
         if (!ext->pte_data.pte_method_is_ready_to_use)
         {
             DbgPrint("Error: the acquisition mode PTE is not available for your system.\n");
             status = STATUS_NOT_SUPPORTED;
+			goto exit;
         }
 		
 		if ((!mdl_inbuffer) || (InputLen < sizeof(UINT64)))

@@ -26,38 +26,39 @@ typedef unsigned __int8 u8;
 #define PMEM_MODE_PTE 2
 // #define PMEM_MODE_PTE_PCI 3 // deprecated
 
-#define NUMBER_OF_RUNS   (20)
+#define NUMBER_OF_RUNS   (300)  // increased allowed size. Backward compability should be given, since the array is at the end. 
 
 #pragma pack(push, 2)
 
 
+// For programmers, please do not rely on unchangeability of this struct and be prepared that this struct might change.
+// It contains too much deprecated data.
+
 typedef struct _WINPMEM_MEMORY_INFO
 {
-  LARGE_INTEGER CR3;
+  LARGE_INTEGER CR3;  // System process Cr3.
   LARGE_INTEGER NtBuildNumber; // Version of this kernel.
 
   LARGE_INTEGER KernBase;  // The base of the kernel image.
 
 
-  // The following are deprecated and will not be set by the driver. It is safer
-  // to get these during analysis from NtBuildNumberAddr below.
-  LARGE_INTEGER KDBG;  // xxx: I want that. Can I have it?
-
-  // xxx: Support up to 32/64  processors for KPCR. Depending on OS bitness
+  // The following are deprecated and will not be set by the driver. 
+  
+  LARGE_INTEGER KDBG;  // Deprecated since a long time now. 
+  
   #if defined(_WIN64)
-  LARGE_INTEGER KPCR[64];
+  LARGE_INTEGER KPCR[64]; // still filled out pro forma
   #else
-  LARGE_INTEGER KPCR[32];
+  LARGE_INTEGER KPCR[32];  // still filled out pro forma
   #endif
 
-  LARGE_INTEGER PfnDataBase;
-  LARGE_INTEGER PsLoadedModuleList;
-  LARGE_INTEGER PsActiveProcessHead;
+  LARGE_INTEGER PfnDataBase;  // Deprecated since a long time now. 
+  LARGE_INTEGER PsLoadedModuleList;  // Deprecated since a long time now. 
+  LARGE_INTEGER PsActiveProcessHead;  // Deprecated since a long time now. 
 
   // END DEPRECATED.
 
-  // The address of the NtBuildNumber integer - could be used to find the kernel base.
-  LARGE_INTEGER NtBuildNumberAddr;
+  LARGE_INTEGER NtBuildNumberAddr;  // still filled out pro forma.
 
   // As the driver is extended we can add fields here maintaining
   // driver alignment..
