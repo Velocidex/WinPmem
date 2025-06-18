@@ -32,7 +32,7 @@ func doInstall() error {
 	var err error
 	var fd *os.File
 
-	if *driver_path == "" {
+	if *install_driver_path == "" {
 		fd, err = ioutil.TempFile("", "*.sys")
 		if err != nil {
 			return err
