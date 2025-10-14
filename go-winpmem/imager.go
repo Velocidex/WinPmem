@@ -109,7 +109,7 @@ func (self *Imager) readAt(buf []byte, offset int64) (int, error) {
 		return to_read, nil
 	}
 
-	return int(actual_read), fmt.Errorf("readAt: %w", err)
+	return int(actual_read), nil
 }
 
 func (self *Imager) ReadAt(buf []byte, offset int64) (int, error) {
